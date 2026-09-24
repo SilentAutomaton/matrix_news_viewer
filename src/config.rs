@@ -232,6 +232,12 @@ mod tests {
     }
 
     #[test]
+    fn example_file_parses() {
+        let config = parse(include_str!("../config.example.toml")).unwrap();
+        assert_eq!(config.feed.sources.len(), 2);
+    }
+
+    #[test]
     fn unknown_keys_are_rejected() {
         assert!(parse("[rain]\nfal_speed = 0.5").is_err());
     }

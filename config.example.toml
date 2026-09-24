@@ -1,0 +1,83 @@
+# Copy to ~/.config/matrix-news-viewer/config.toml. Every key is optional;
+# the values below are the defaults. The file is re-read when it changes.
+
+[display]
+fps = 30
+fps_on_battery = 15
+# Output names to cover (see `hyprctl monitors`). Empty covers all outputs.
+# Read at start only.
+outputs = []
+
+[palette]
+# green, amber, ice, red, or theme (reads theme.toml next to this file).
+preset = "green"
+# Custom rain gradient; replaces the preset gradient when not empty.
+# stops = [{ at = 0.0, color = "#000000" }, { at = 0.7, color = "#33ff66" }]
+stops = []
+# "#rrggbb"; empty keeps the preset colour.
+cursor = ""
+cursor_intensity = 2.0
+text = ""
+background = ""
+dither = 0.05
+
+[rain]
+# Glyph cell size in logical pixels. The same grid spans every monitor.
+cell_size = 20.0
+animation_speed = 1.0
+fall_speed = 0.3
+raindrop_length = 0.75
+# Glyph changes per second in each cell.
+cycle_speed = 1.8
+# How many glyphs of the Matrix atlas fall (up to 64).
+glyphs = 57
+base_brightness = -0.5
+base_contrast = 1.1
+skip_intro = false
+
+[bloom]
+# 0 turns the glow off.
+strength = 0.7
+size = 0.4
+threshold = 0.1
+
+[text]
+# A font file or a fontconfig pattern.
+font = "monospace:bold"
+max_length = 72
+interval_min = 4.0
+interval_max = 10.0
+# Cells per second.
+reveal_rate = 18.0
+dwell = 4.0
+erase_rate = 30.0
+scramble_width = 3.0
+max_concurrent = 2
+brightness = 1.0
+# Shown while the news database is empty or missing.
+fallback = ["WAKE UP", "FOLLOW THE WHITE RABBIT", "THERE IS NO SPOON"]
+
+[feed]
+# Any SQLite file works; the defaults read the newsboat cache.
+db = "~/.local/share/newsboat/cache.db"
+table = "rss_item"
+title = "title"
+url = "url"
+source = "feedurl"
+time = "pubDate"
+# unix (seconds) or iso (text dates).
+time_kind = "unix"
+window_hours = 48.0
+# Older headlines are picked less often: weight halves every this many hours.
+half_life_hours = 12.0
+
+# Per-feed weight and headline colour. `matches` is a substring of the source column.
+[[feed.sources]]
+matches = "archlinux.org"
+weight = 3.0
+color = "#1793d1"
+
+[[feed.sources]]
+matches = "habr.com"
+weight = 1.0
+color = "#6cb4ee"
