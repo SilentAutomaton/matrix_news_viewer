@@ -1,0 +1,19 @@
+[package]
+name = "matrix-news-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+smithay-client-toolkit = "0.21"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["static"] }
+glow = "0.18"
+rusqlite = "0.40"
+fontdue = "0.9"
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+
+[profile.release]
+lto = true
