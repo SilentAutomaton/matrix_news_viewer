@@ -2,15 +2,14 @@ use std::collections::HashMap;
 
 use crate::config::Text;
 use crate::news::Pick;
-use crate::rng::{Rng, hash};
+use crate::rng::Rng;
 
-pub const KIND_POCKET: u8 = 1;
-pub const KIND_TEXT: u8 = 2;
-pub const KIND_SCRAMBLE: u8 = 3;
-pub const KIND_FADE: u8 = 4;
+pub const KIND_TEXT: u8 = 1;
+pub const KIND_CATCH: u8 = 2;
 
 const SINGLE_LINE_MAX: usize = 36;
-const SCRAMBLE_HZ: f32 = 12.0;
+// How long a raindrop head holds a letter in the cursor colour while it catches or drops it.
+const CATCH: f32 = 0.35;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CellRect {
@@ -87,87 +86,61 @@ pub fn layout(title: &str, max_width: usize, index: &HashMap<char, u8>) -> Vec<V
     lines.iter().map(|line| truncate(line, max_width).iter().map(|c| index[c]).collect()).collect()
 }
 
+struct Letter {
+    col: i32,
+    row: i32,
+    glyph: u8,
+    caught: f32,
+    released: f32,
+}
+
 pub struct Message {
-    lines: Vec<Vec<u8>>,
+    letters: Vec<Letter>,
     pub bounds: CellRect,
     pub url: Option<String>,
     color: u8,
-    start: f32,
-}
-
-enum Phase {
-    Reveal(f32),
-    Dwell,
-    Erase(f32),
-    Done,
+    end: f32,
 }
 
 impl Message {
-    fn width(&self) -> f32 {
-        self.bounds.cols as f32
-    }
-
-    fn phase(&self, t: f32, text: &Text) -> Phase {
-        let elapsed = t - self.start;
-        let scramble = text.scramble_width;
-        let reveal = (self.width() + scramble) / text.reveal_rate;
-        let letters: usize = self.lines.iter().map(Vec::len).sum();
-        let dwell = reveal + text.dwell + 0.055 * letters as f32;
-        let erase = dwell + (self.width() + scramble) / text.erase_rate;
-        if elapsed < reveal {
-            Phase::Reveal(elapsed * text.reveal_rate)
-        } else if elapsed < dwell {
-            Phase::Dwell
-        } else if elapsed < erase {
-            Phase::Erase((elapsed - dwell) * text.erase_rate)
-        } else {
-            Phase::Done
-        }
-    }
-
-    pub fn done(&self, t: f32, text: &Text) -> bool {
-        matches!(self.phase(t, text), Phase::Done)
-    }
-
     // One RGBA texel per cell: glyph, kind, colour index, intensity.
-    fn paint(&self, t: f32, text: &Text, glyphs: u32, grid: &mut Grid) {
-        let phase = self.phase(t, text);
-        let tick = (t * SCRAMBLE_HZ) as i64;
-        let scramble = text.scramble_width;
-        let (lo, hi) = match phase {
-            Phase::Reveal(head) => (0.0, head),
-            Phase::Dwell => (0.0, f32::MAX),
-            Phase::Erase(head) => (head, f32::MAX),
-            Phase::Done => return,
-        };
-        let pocket = self.bounds.grow(1, 1);
-        for row in pocket.row..pocket.row + pocket.rows {
-            for col in pocket.col..pocket.col + pocket.cols {
-                let x = (col - self.bounds.col) as f32;
-                if x + 1.0 >= lo - scramble && x - 1.0 < hi {
-                    grid.set(col, row, [0, KIND_POCKET, 0, 0]);
-                }
-            }
-        }
-        for (line_index, line) in self.lines.iter().enumerate() {
-            let offset = (self.bounds.cols - line.len() as i32) / 2;
-            let row = self.bounds.row + line_index as i32;
-            for (i, &glyph) in line.iter().enumerate() {
-                let col = self.bounds.col + offset + i as i32;
-                let x = (offset + i as i32) as f32;
-                let random = (hash(col as i64, row as i64, tick) % glyphs.max(1) as u64) as u8;
-                let cell = match phase {
-                    Phase::Reveal(head) if x < head - scramble => [glyph, KIND_TEXT, self.color, (text.brightness * 255.0) as u8],
-                    Phase::Reveal(head) if x < head => [random, KIND_SCRAMBLE, 0, 255],
-                    Phase::Erase(head) if x < head => continue,
-                    Phase::Erase(head) if x < head + scramble => [random, KIND_FADE, 0, 128],
-                    Phase::Reveal(_) => continue,
-                    _ => [glyph, KIND_TEXT, self.color, (text.brightness * 255.0) as u8],
-                };
-                grid.set(col, row, cell);
-            }
+    fn paint(&self, t: f32, text: &Text, grid: &mut Grid) {
+        for letter in &self.letters {
+            let cell = if t < letter.caught || t >= letter.released {
+                continue;
+            } else if t < letter.caught + CATCH || t >= letter.released - CATCH {
+                [letter.glyph, KIND_CATCH, 0, 255]
+            } else {
+                [letter.glyph, KIND_TEXT, self.color, (text.brightness * 255.0) as u8]
+            };
+            grid.set(letter.col, letter.row, cell);
         }
     }
+}
+
+fn message(
+    lines: &[Vec<u8>], bounds: CellRect, pick: Pick, text: &Text, space: Option<u8>, t: f32,
+    drop: &dyn Fn(i32, i32, f32) -> f32,
+) -> Message {
+    let mut letters = Vec::new();
+    for (line_index, line) in lines.iter().enumerate() {
+        let offset = (bounds.cols - line.len() as i32) / 2;
+        let row = bounds.row + line_index as i32;
+        for (i, &glyph) in line.iter().enumerate() {
+            if Some(glyph) == space {
+                continue;
+            }
+            let col = bounds.col + offset + i as i32;
+            letters.push(Letter { col, row, glyph, caught: drop(col, row, t), released: 0.0 });
+        }
+    }
+    let shown = letters.iter().map(|l| l.caught).fold(t, f32::max) + CATCH;
+    let dwell_end = shown + text.dwell + 0.055 * letters.len() as f32;
+    for letter in &mut letters {
+        letter.released = drop(letter.col, letter.row, dwell_end) + CATCH;
+    }
+    let end = letters.iter().map(|l| l.released).fold(t, f32::max);
+    Message { letters, bounds, url: pick.url, color: pick.color, end }
 }
 
 pub struct Grid {
@@ -204,11 +177,15 @@ impl Headlines {
         t >= self.next_spawn && self.messages.len() < text.max_concurrent
     }
 
-    pub fn update(&mut self, t: f32, text: &Text) {
-        self.messages.retain(|m| !m.done(t, text));
+    pub fn update(&mut self, t: f32) {
+        self.messages.retain(|m| t < m.end);
     }
 
-    pub fn spawn(&mut self, t: f32, text: &Text, pick: Pick, regions: &[CellRect], index: &HashMap<char, u8>) {
+    // `drop(col, row, after)` is when the next raindrop head reaches that cell.
+    pub fn spawn(
+        &mut self, t: f32, text: &Text, pick: Pick, regions: &[CellRect], index: &HashMap<char, u8>,
+        drop: &dyn Fn(i32, i32, f32) -> f32,
+    ) {
         let span = (text.interval_max - text.interval_min).max(0.0);
         self.next_spawn = t + text.interval_min + span * self.rng.unit() as f32;
         if regions.is_empty() {
@@ -235,16 +212,16 @@ impl Headlines {
                 rows,
             };
             if self.messages.iter().all(|m| !m.bounds.grow(2, 2).overlaps(&bounds)) {
-                self.messages.push(Message { lines, bounds, url: pick.url, color: pick.color, start: t });
+                self.messages.push(message(&lines, bounds, pick, text, index.get(&' ').copied(), t, drop));
                 return;
             }
         }
     }
 
-    pub fn paint(&self, t: f32, text: &Text, glyphs: u32, grid: &mut Grid) {
+    pub fn paint(&self, t: f32, text: &Text, grid: &mut Grid) {
         grid.cells.fill(0);
         for message in &self.messages {
-            message.paint(t, text, glyphs, grid);
+            message.paint(t, text, grid);
         }
     }
 
@@ -296,15 +273,20 @@ mod tests {
         let region = CellRect { col: 48, row: 0, cols: 48, rows: 54 };
         let mut headlines = Headlines::new(0.0);
         let pick = Pick { title: "A fairly long headline that needs two lines here".into(), url: Some("https://x.example".into()), color: 0 };
-        headlines.spawn(0.0, &text, pick, &[region], &index());
+        let drop = |col: i32, _row: i32, after: f32| after + 0.5 + (col % 5) as f32 * 0.3;
+        headlines.spawn(0.0, &text, pick, &[region], &index(), &drop);
         let message = &headlines.messages[0];
         assert!(message.bounds.col >= region.col && message.bounds.col + message.bounds.cols <= region.col + region.cols);
         assert!(message.bounds.row >= region.row && message.bounds.row + message.bounds.rows <= region.row + region.rows);
         assert_eq!(headlines.link_at(message.bounds.col, message.bounds.row), Some("https://x.example"));
         let mut grid = Grid::new(96, 54);
-        headlines.paint(3.0, &text, 57, &mut grid);
+        headlines.paint(0.1, &text, &mut grid);
+        assert!(grid.cells.chunks(4).all(|c| c[1] == 0));
+        headlines.paint(0.6, &text, &mut grid);
+        assert!(grid.cells.chunks(4).any(|c| c[1] == KIND_CATCH));
+        headlines.paint(3.0, &text, &mut grid);
         assert!(grid.cells.chunks(4).any(|c| c[1] == KIND_TEXT));
-        headlines.update(1000.0, &text);
+        headlines.update(1000.0);
         assert!(headlines.messages.is_empty());
     }
 }

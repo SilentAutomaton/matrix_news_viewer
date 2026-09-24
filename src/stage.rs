@@ -9,12 +9,14 @@ use crate::headline::{CellRect, Grid, Headlines};
 use crate::news::{self, Headline, Picker};
 use crate::notices;
 use crate::palette::{Rgb, parse_hex};
+use crate::rain::{self, Column};
 use crate::render::TEXT_COLORS;
 
 const REQUERY: Duration = Duration::from_secs(600);
 
 pub struct Stage {
     pub grid: Grid,
+    pub columns: Vec<Column>,
     headlines: Headlines,
     picker: Picker,
     news: Vec<Headline>,
@@ -23,6 +25,7 @@ pub struct Stage {
     db_modified: Option<SystemTime>,
     queried: Option<Instant>,
     reported: bool,
+    last_t: f32,
 }
 
 fn unix_now() -> f64 {
@@ -38,6 +41,7 @@ impl Stage {
     pub fn new(config: &Config) -> Self {
         Self {
             grid: Grid::new(1, 1),
+            columns: rain::columns(1),
             headlines: Headlines::new(0.0),
             picker: Picker::new(),
             news: Vec::new(),
@@ -46,17 +50,19 @@ impl Stage {
             db_modified: None,
             queried: None,
             reported: false,
+            last_t: 0.0,
         }
     }
 
     pub fn reset(&mut self, config: &Config, cols: i32, rows: i32, now: f32) {
         self.grid = Grid::new(cols, rows);
+        self.columns = rain::columns(cols);
         self.headlines = Headlines::new(now + intro_seconds(config, rows));
         self.db = crate::config::expand(&config.feed.db);
         self.queried = None;
     }
 
-    pub fn text_atlas(&mut self, config: &Config, slot: u32) -> Option<TextAtlas> {
+    pub fn text_atlas(&mut self, config: &Config, slot: (u32, u32)) -> Option<TextAtlas> {
         let Some(file) = atlas::font_file(&config.text.font) else {
             eprintln!("{}", notices::no_font(&config.text.font));
             return None;
@@ -99,17 +105,23 @@ impl Stage {
 
     pub fn frame(&mut self, config: &Config, t: f32, regions: &[CellRect]) {
         let text = &config.text;
-        self.headlines.update(t, text);
+        if t < self.last_t {
+            self.headlines = Headlines::new(t);
+        }
+        self.last_t = t;
+        self.headlines.update(t);
         if self.headlines.wants_new(t, text) && !self.index.is_empty() {
             let pick = match self.news.is_empty() {
                 true => self.picker.fallback(&text.fallback),
                 false => self.picker.next(&self.news, &config.feed, unix_now()),
             };
+            let (columns, rows) = (&self.columns, self.grid.rows);
+            let drop = |col: i32, row: i32, after: f32| rain::next_drop(&columns[col as usize], row, rows, after, &config.rain);
             if let Some(pick) = pick {
-                self.headlines.spawn(t, text, pick, regions, &self.index);
+                self.headlines.spawn(t, text, pick, regions, &self.index, &drop);
             }
         }
-        self.headlines.paint(t, text, config.rain.glyphs.min(64), &mut self.grid);
+        self.headlines.paint(t, text, &mut self.grid);
     }
 
     pub fn click(&self, col: i32, row: i32) {

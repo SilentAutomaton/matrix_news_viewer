@@ -40,6 +40,7 @@ pub struct Renderer {
     text_grid: NativeTexture,
     palette_lut: NativeTexture,
     black: NativeTexture,
+    columns: NativeTexture,
     source: Option<Target>,
     across: Vec<Target>,
     levels: Vec<Target>,
@@ -59,10 +60,11 @@ impl Renderer {
             let text_atlas = texture(&gl, glow::R8, glow::RED, &empty, glow::LINEAR)?;
             let text_grid = texture(&gl, glow::RGBA8, glow::RGBA, &empty, glow::NEAREST)?;
             let black = texture(&gl, glow::RGBA8, glow::RGBA, &empty, glow::NEAREST)?;
+            let columns = texture(&gl, glow::RGBA8, glow::RGBA, &empty, glow::NEAREST)?;
             let palette_lut = texture(&gl, glow::RGB8, glow::RGB, &Image { width: 1, height: 1, pixels: vec![0; 3] }, glow::LINEAR)?;
             Ok(Self {
                 gl, vao, panel, bloom_source, blur, rain_atlas, text_atlas,
-                text_atlas_grid: (1, 1), text_grid, palette_lut, black,
+                text_atlas_grid: (1, 1), text_grid, palette_lut, black, columns,
                 source: None, across: Vec::new(), levels: Vec::new(),
             })
         }
@@ -81,6 +83,18 @@ impl Renderer {
     pub fn set_text_grid(&mut self, columns: i32, rows: i32, cells: &[u8]) {
         let image = Image { width: columns as u32, height: rows as u32, pixels: cells.to_vec() };
         unsafe { upload(&self.gl, self.text_grid, glow::RGBA8, glow::RGBA, &image) };
+    }
+
+    pub fn set_columns(&mut self, texels: &[f32]) {
+        let gl = &self.gl;
+        let bytes: Vec<u8> = texels.iter().flat_map(|v| v.to_ne_bytes()).collect();
+        unsafe {
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.columns));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D, 0, glow::RGB32F as i32, (texels.len() / 3) as i32, 1, 0,
+                glow::RGB, glow::FLOAT, glow::PixelUnpackData::Slice(Some(&bytes)),
+            );
+        }
     }
 
     pub fn render_bloom(&mut self, frame: &Frame) {
@@ -155,7 +169,8 @@ impl Renderer {
             vec2("gridSize", frame.grid.0 as f32, frame.grid.1 as f32);
             vec2("worldSize", frame.world.width as f32, frame.world.height as f32);
             vec2("textAtlasGrid", self.text_atlas_grid.0 as f32, self.text_atlas_grid.1 as f32);
-            set_f(gl, program, "cellSize", rain.cell_size);
+            vec2("cellSize", rain.cell_width.max(1.0), rain.cell_height.max(1.0));
+            set_f(gl, program, "glyphAspect", rain.glyph_aspect);
             set_f(gl, program, "time", frame.time);
             set_f(gl, program, "fallSpeed", rain.fall_speed);
             set_f(gl, program, "raindropLength", rain.raindrop_length);
@@ -177,6 +192,7 @@ impl Renderer {
                 (1, "textAtlas", self.text_atlas),
                 (2, "textGrid", self.text_grid),
                 (3, "paletteLut", self.palette_lut),
+                (9, "columns", self.columns),
             ] {
                 gl.active_texture(glow::TEXTURE0 + unit);
                 gl.bind_texture(glow::TEXTURE_2D, Some(tex));

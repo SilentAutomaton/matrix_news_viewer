@@ -22,8 +22,12 @@ background = ""
 dither = 0.05
 
 [rain]
-# Glyph cell size in logical pixels. The same grid spans every monitor.
-cell_size = 20.0
+# Glyph cell in logical pixels, the same grid across every monitor. The defaults
+# match a kitty cell of GeistMono 11 pt at scale 1: 9 wide, 20 tall.
+cell_width = 9.0
+cell_height = 20.0
+# Height of a falling glyph relative to its width.
+glyph_aspect = 1.4
 animation_speed = 1.0
 fall_speed = 0.3
 raindrop_length = 0.75
@@ -47,11 +51,8 @@ font = "monospace:bold"
 max_length = 72
 interval_min = 4.0
 interval_max = 10.0
-# Cells per second.
-reveal_rate = 18.0
+# Seconds a headline stays after its last letter is caught.
 dwell = 4.0
-erase_rate = 30.0
-scramble_width = 3.0
 max_concurrent = 2
 brightness = 1.0
 # Shown while the news database is empty or missing.

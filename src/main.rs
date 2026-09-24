@@ -5,6 +5,7 @@ mod headline;
 mod news;
 mod notices;
 mod palette;
+mod rain;
 mod render;
 mod rng;
 mod stage;
@@ -106,16 +107,16 @@ fn on_battery() -> bool {
     !mains.is_empty() && mains.iter().all(|online| online.trim() == "0")
 }
 
-fn grid(world: Rect, cell: f32) -> (i32, i32) {
-    ((world.width as f32 / cell).ceil() as i32, (world.height as f32 / cell).ceil() as i32)
+fn grid(world: Rect, cell: (f32, f32)) -> (i32, i32) {
+    ((world.width as f32 / cell.0).ceil() as i32, (world.height as f32 / cell.1).ceil() as i32)
 }
 
 // Only whole cells inside one output, so a headline never crosses a monitor edge.
-fn cell_rect(rect: Rect, world: Rect, cell: f32) -> CellRect {
-    let left = ((rect.x - world.x) as f32 / cell).ceil() as i32;
-    let top = ((rect.y - world.y) as f32 / cell).ceil() as i32;
-    let right = ((rect.x + rect.width - world.x) as f32 / cell).floor() as i32;
-    let bottom = ((rect.y + rect.height - world.y) as f32 / cell).floor() as i32;
+fn cell_rect(rect: Rect, world: Rect, cell: (f32, f32)) -> CellRect {
+    let left = ((rect.x - world.x) as f32 / cell.0).ceil() as i32;
+    let top = ((rect.y - world.y) as f32 / cell.1).ceil() as i32;
+    let right = ((rect.x + rect.width - world.x) as f32 / cell.0).floor() as i32;
+    let bottom = ((rect.y + rect.height - world.y) as f32 / cell.1).floor() as i32;
     CellRect { col: left, row: top, cols: right - left, rows: bottom - top }
 }
 
@@ -146,7 +147,7 @@ fn main() {
     let mut next_frame = Instant::now();
     let mut next_poll = Instant::now();
     let mut world = desktop.world();
-    let mut cells = grid(world, settings.config.rain.cell_size);
+    let mut cells = grid(world, settings.config.rain.cell());
     let mut stage = Stage::new(&settings.config);
 
     loop {
@@ -170,17 +171,20 @@ fn main() {
         if desktop.layout_changed {
             desktop.layout_changed = false;
             world = desktop.world();
-            cells = grid(world, settings.config.rain.cell_size);
-            stage.reset(&settings.config, cells.0, cells.1, seconds);
+            cells = grid(world, settings.config.rain.cell());
+            stage.reset(&settings.config, cells.0, cells.1, shader_time(seconds));
             stage.poll(&settings.config);
+            renderer.set_columns(&rain::texels(&stage.columns));
             let scale = desktop.panels.iter().map(|p| p.scale).max().unwrap_or(1);
-            if let Some(atlas) = stage.text_atlas(&settings.config, (settings.config.rain.cell_size * scale as f32).round() as u32) {
+            let (width, height) = settings.config.rain.cell();
+            let slot = ((width * scale as f32).round() as u32, (height * scale as f32).round() as u32);
+            if let Some(atlas) = stage.text_atlas(&settings.config, slot) {
                 renderer.set_text_atlas(&atlas);
             }
         }
-        let cell = settings.config.rain.cell_size;
+        let cell = settings.config.rain.cell();
         for (x, y) in desktop.clicks.drain(..) {
-            stage.click(((x - world.x as f64) / cell as f64) as i32, ((y - world.y as f64) / cell as f64) as i32);
+            stage.click(((x - world.x as f64) / cell.0 as f64) as i32, ((y - world.y as f64) / cell.1 as f64) as i32);
         }
         if now < next_frame {
             continue;
@@ -194,7 +198,7 @@ fn main() {
             continue;
         }
         let regions: Vec<CellRect> = desktop.panels.iter().filter(|p| p.configured).map(|p| cell_rect(p.rect, world, cell)).collect();
-        stage.frame(&settings.config, seconds, &regions);
+        stage.frame(&settings.config, shader_time(seconds), &regions);
         renderer.set_text_grid(stage.grid.cols, stage.grid.rows, &stage.grid.cells);
         let text_colors = stage::text_colors(&settings.config, settings.palette.text);
         let frame = Frame {

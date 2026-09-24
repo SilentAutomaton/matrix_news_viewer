@@ -6,14 +6,13 @@
 #define SQRT_2 1.4142135623730951
 #define SQRT_5 2.23606797749979
 
-#define KIND_POCKET 1
-#define KIND_TEXT 2
-#define KIND_SCRAMBLE 3
-#define KIND_FADE 4
+#define KIND_TEXT 1
+#define KIND_CATCH 2
 
 uniform vec2 gridSize;
 uniform vec2 worldSize;
-uniform float cellSize;
+uniform vec2 cellSize;
+uniform float glyphAspect;
 uniform float time;
 uniform float fallSpeed, raindropLength, cycleSpeed, glyphCount;
 uniform float baseBrightness, baseContrast;
@@ -23,6 +22,8 @@ uniform sampler2D rainAtlas;
 uniform sampler2D textAtlas;
 uniform vec2 textAtlasGrid;
 uniform sampler2D textGrid;
+// Per column: time offset, speed, intro offset. The CPU uses the same values to time headlines.
+uniform sampler2D columns;
 
 uniform sampler2D paletteLut;
 uniform vec3 cursorColor, backgroundColor;
@@ -38,10 +39,13 @@ float wobble(float x) {
     return x + 0.3 * sin(SQRT_2 * x) + 0.2 * sin(SQRT_5 * x);
 }
 
+vec3 column(float x) {
+    return texelFetch(columns, ivec2(x, 0), 0).rgb;
+}
+
 float rainBrightness(vec2 glyphPos) {
-    float columnTimeOffset = randomFloat(vec2(glyphPos.x, 0.0)) * 1000.0;
-    float columnSpeedOffset = randomFloat(vec2(glyphPos.x + 0.1, 0.0)) * 0.5 + 0.5;
-    float columnTime = columnTimeOffset + time * fallSpeed * columnSpeedOffset;
+    vec3 c = column(glyphPos.x);
+    float columnTime = c.r + time * fallSpeed * c.g;
     return 1.0 - fract(wobble((glyphPos.y * 0.01 + columnTime) / raindropLength));
 }
 
@@ -49,16 +53,7 @@ float introProgress(vec2 glyphPos) {
     if (skipIntro) {
         return 2.0;
     }
-    float offset;
-    int column = int(glyphPos.x);
-    if (column == int(gridSize.x / 2.0)) {
-        offset = -1.0;
-    } else if (column == int(gridSize.x * 0.75)) {
-        offset = -2.0;
-    } else {
-        offset = randomFloat(vec2(glyphPos.x, 0.0)) * -4.0;
-        offset += (sin(glyphPos.x / gridSize.x * PI) - 1.0) * 2.0 - 2.5;
-    }
+    float offset = column(glyphPos.x).b;
     float introTime = (time + offset) * fallSpeed / gridSize.y * 100.0;
     return introTime - (1.0 - glyphPos.y / gridSize.y);
 }
@@ -72,7 +67,13 @@ float median3(vec3 v) {
     return max(min(v.r, v.g), min(max(v.r, v.g), v.b));
 }
 
+// Matrix glyphs keep their shape: full cell width, height from the aspect, centred vertically.
 float rainGlyph(float index, vec2 inCell) {
+    float boxHeight = min(1.0, cellSize.x * glyphAspect / cellSize.y);
+    inCell.y = (inCell.y - 0.5) / boxHeight + 0.5;
+    if (inCell.y < 0.0 || inCell.y > 1.0) {
+        return 0.0;
+    }
     vec2 slot = vec2(mod(index, 8.0), floor(index / 8.0));
     vec2 uv = (slot + inCell) / 8.0;
     vec2 unitRange = vec2(4.0) / vec2(textureSize(rainAtlas, 0));
@@ -105,16 +106,14 @@ vec3 scene(vec2 worldPos) {
     int kind = int(overlay.g * 255.0 + 0.5);
     float intensity = overlay.a;
     float rain = 0.0, glow = 0.0, text = 0.0;
-    if (kind == 0) {
+    if (kind == KIND_TEXT) {
+        text = intensity * textGlyph(overlay.r * 255.0, inCell);
+    } else if (kind == KIND_CATCH) {
+        glow = intensity * textGlyph(overlay.r * 255.0, inCell);
+    } else {
         float symbol = rainGlyph(symbolAt(cell), inCell);
         rain = cursor ? 0.0 : base * symbol;
         glow = cursor ? base * symbol : 0.0;
-    } else if (kind == KIND_TEXT) {
-        text = intensity * textGlyph(overlay.r * 255.0, inCell);
-    } else if (kind == KIND_SCRAMBLE) {
-        glow = intensity * rainGlyph(overlay.r * 255.0, inCell);
-    } else if (kind == KIND_FADE) {
-        rain = intensity * rainGlyph(overlay.r * 255.0, inCell);
     }
 
     vec3 textColor = textColors[int(overlay.b * 255.0 + 0.5)];

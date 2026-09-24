@@ -43,7 +43,9 @@ pub struct Stop {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rain {
-    pub cell_size: f32,
+    pub cell_width: f32,
+    pub cell_height: f32,
+    pub glyph_aspect: f32,
     pub animation_speed: f32,
     pub fall_speed: f32,
     pub raindrop_length: f32,
@@ -69,10 +71,7 @@ pub struct Text {
     pub max_length: usize,
     pub interval_min: f32,
     pub interval_max: f32,
-    pub reveal_rate: f32,
     pub dwell: f32,
-    pub erase_rate: f32,
-    pub scramble_width: f32,
     pub max_concurrent: usize,
     pub brightness: f32,
     pub fallback: Vec<String>,
@@ -136,7 +135,9 @@ impl Default for Palette {
 impl Default for Rain {
     fn default() -> Self {
         Self {
-            cell_size: 20.0,
+            cell_width: 9.0,
+            cell_height: 20.0,
+            glyph_aspect: 1.4,
             animation_speed: 1.0,
             fall_speed: 0.3,
             raindrop_length: 0.75,
@@ -146,6 +147,12 @@ impl Default for Rain {
             base_contrast: 1.1,
             skip_intro: false,
         }
+    }
+}
+
+impl Rain {
+    pub fn cell(&self) -> (f32, f32) {
+        (self.cell_width.max(1.0), self.cell_height.max(1.0))
     }
 }
 
@@ -162,10 +169,7 @@ impl Default for Text {
             max_length: 72,
             interval_min: 4.0,
             interval_max: 10.0,
-            reveal_rate: 18.0,
             dwell: 4.0,
-            erase_rate: 30.0,
-            scramble_width: 3.0,
             max_concurrent: 2,
             brightness: 1.0,
             fallback: vec!["WAKE UP".into(), "FOLLOW THE WHITE RABBIT".into(), "THERE IS NO SPOON".into()],
@@ -227,7 +231,7 @@ mod tests {
     fn partial_sections_keep_other_defaults() {
         let config = parse("[rain]\nfall_speed = 0.5\n[[feed.sources]]\nmatches = \"habr\"\ncolor = \"#ff0000\"").unwrap();
         assert_eq!(config.rain.fall_speed, 0.5);
-        assert_eq!(config.rain.cell_size, 20.0);
+        assert_eq!(config.rain.cell_height, 20.0);
         assert_eq!(config.feed.sources[0].weight, 1.0);
     }
 
