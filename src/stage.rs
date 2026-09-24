@@ -35,10 +35,10 @@ fn intro_seconds(config: &Config, rows: i32) -> f32 {
 }
 
 impl Stage {
-    pub fn new(config: &Config, cols: i32, rows: i32, now: f32) -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
-            grid: Grid::new(cols, rows),
-            headlines: Headlines::new(now + intro_seconds(config, rows)),
+            grid: Grid::new(1, 1),
+            headlines: Headlines::new(0.0),
             picker: Picker::new(),
             news: Vec::new(),
             index: HashMap::new(),
@@ -47,6 +47,13 @@ impl Stage {
             queried: None,
             reported: false,
         }
+    }
+
+    pub fn reset(&mut self, config: &Config, cols: i32, rows: i32, now: f32) {
+        self.grid = Grid::new(cols, rows);
+        self.headlines = Headlines::new(now + intro_seconds(config, rows));
+        self.db = crate::config::expand(&config.feed.db);
+        self.queried = None;
     }
 
     pub fn text_atlas(&mut self, config: &Config, slot: u32) -> Option<TextAtlas> {

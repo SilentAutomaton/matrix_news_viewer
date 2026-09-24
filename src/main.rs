@@ -147,7 +147,7 @@ fn main() {
     let mut next_poll = Instant::now();
     let mut world = desktop.world();
     let mut cells = grid(world, settings.config.rain.cell_size);
-    let mut stage = Stage::new(&settings.config, cells.0, cells.1, 0.0);
+    let mut stage = Stage::new(&settings.config);
 
     loop {
         let timeout = next_frame.saturating_duration_since(Instant::now());
@@ -163,7 +163,6 @@ fn main() {
             next_poll = now + POLL;
             if settings.reload() {
                 renderer.set_palette(&settings.palette);
-                stage = Stage::new(&settings.config, cells.0, cells.1, seconds);
                 desktop.layout_changed = true;
             }
             stage.poll(&settings.config);
@@ -172,7 +171,7 @@ fn main() {
             desktop.layout_changed = false;
             world = desktop.world();
             cells = grid(world, settings.config.rain.cell_size);
-            stage = Stage::new(&settings.config, cells.0, cells.1, seconds);
+            stage.reset(&settings.config, cells.0, cells.1, seconds);
             stage.poll(&settings.config);
             let scale = desktop.panels.iter().map(|p| p.scale).max().unwrap_or(1);
             if let Some(atlas) = stage.text_atlas(&settings.config, (settings.config.rain.cell_size * scale as f32).round() as u32) {
