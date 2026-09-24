@@ -12,7 +12,7 @@ The program never goes to the network. News arrive only when you run
 
 ```
 pacman -S newsboat
-cargo install --path .
+cargo install --path . --root ~/.local
 mkdir -p ~/.config/newsboat ~/.config/matrix-news-viewer
 cp newsboat-urls.example ~/.config/newsboat/urls
 cp config.example.toml ~/.config/matrix-news-viewer/config.toml
