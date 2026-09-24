@@ -112,6 +112,7 @@ impl Renderer {
                     gl.viewport(0, 0, target.size.0, target.size.1);
                     gl.bind_texture(glow::TEXTURE_2D, Some(input));
                     gl.uniform_2_f32(gl.get_uniform_location(self.blur, "direction").as_ref(), direction[0], direction[1]);
+                    gl.uniform_2_f32(gl.get_uniform_location(self.blur, "targetSize").as_ref(), target.size.0 as f32, target.size.1 as f32);
                     gl.draw_arrays(glow::TRIANGLES, 0, 3);
                 }
             }

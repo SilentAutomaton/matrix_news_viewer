@@ -1,9 +1,13 @@
 mod atlas;
 mod config;
 mod gl;
+mod headline;
+mod news;
 mod notices;
 mod palette;
 mod render;
+mod rng;
+mod stage;
 mod wayland;
 
 use std::collections::HashMap;
@@ -20,6 +24,8 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use config::Config;
 use palette::Palette;
 use render::{Frame, Renderer};
+use headline::CellRect;
+use stage::Stage;
 use wayland::{Desktop, Rect};
 
 const POLL: Duration = Duration::from_secs(2);
@@ -65,11 +71,10 @@ impl Settings {
     fn reload(&mut self) -> bool {
         let config_changed = self.config_file.changed();
         let theme_changed = self.theme_file.changed();
-        if config_changed {
-            if let Some(config) = read_config(&self.config_file.path) {
+        if config_changed
+            && let Some(config) = read_config(&self.config_file.path) {
                 self.config = config;
             }
-        }
         if config_changed || theme_changed {
             let theme = std::fs::read_to_string(&self.theme_file.path).unwrap_or_default();
             self.palette = palette::build(&self.config.palette, &palette::parse_theme(&theme));
@@ -105,6 +110,15 @@ fn grid(world: Rect, cell: f32) -> (i32, i32) {
     ((world.width as f32 / cell).ceil() as i32, (world.height as f32 / cell).ceil() as i32)
 }
 
+// Only whole cells inside one output, so a headline never crosses a monitor edge.
+fn cell_rect(rect: Rect, world: Rect, cell: f32) -> CellRect {
+    let left = ((rect.x - world.x) as f32 / cell).ceil() as i32;
+    let top = ((rect.y - world.y) as f32 / cell).ceil() as i32;
+    let right = ((rect.x + rect.width - world.x) as f32 / cell).floor() as i32;
+    let bottom = ((rect.y + rect.height - world.y) as f32 / cell).floor() as i32;
+    CellRect { col: left, row: top, cols: right - left, rows: bottom - top }
+}
+
 // ponytail: float time loses precision after hours, so it jumps back once an hour past the intro.
 fn shader_time(seconds: f32) -> f32 {
     if seconds < 7200.0 { seconds } else { 3600.0 + (seconds - 3600.0) % 3600.0 }
@@ -130,11 +144,10 @@ fn main() {
 
     let start = Instant::now();
     let mut next_frame = Instant::now();
-    let mut next_poll = Instant::now() + POLL;
+    let mut next_poll = Instant::now();
     let mut world = desktop.world();
     let mut cells = grid(world, settings.config.rain.cell_size);
-    let mut empty_grid = vec![0u8; (cells.0 * cells.1 * 4) as usize];
-    renderer.set_text_grid(cells.0, cells.1, &empty_grid);
+    let mut stage = Stage::new(&settings.config, cells.0, cells.1, 0.0);
 
     loop {
         let timeout = next_frame.saturating_duration_since(Instant::now());
@@ -144,20 +157,31 @@ fn main() {
                 egl.destroy(target);
             }
         }
+        let seconds = start.elapsed().as_secs_f32() * settings.config.rain.animation_speed;
         let now = Instant::now();
         if now >= next_poll {
             next_poll = now + POLL;
             if settings.reload() {
                 renderer.set_palette(&settings.palette);
+                stage = Stage::new(&settings.config, cells.0, cells.1, seconds);
                 desktop.layout_changed = true;
             }
+            stage.poll(&settings.config);
         }
         if desktop.layout_changed {
             desktop.layout_changed = false;
             world = desktop.world();
             cells = grid(world, settings.config.rain.cell_size);
-            empty_grid = vec![0u8; (cells.0 * cells.1 * 4) as usize];
-            renderer.set_text_grid(cells.0, cells.1, &empty_grid);
+            stage = Stage::new(&settings.config, cells.0, cells.1, seconds);
+            stage.poll(&settings.config);
+            let scale = desktop.panels.iter().map(|p| p.scale).max().unwrap_or(1);
+            if let Some(atlas) = stage.text_atlas(&settings.config, (settings.config.rain.cell_size * scale as f32).round() as u32) {
+                renderer.set_text_atlas(&atlas);
+            }
+        }
+        let cell = settings.config.rain.cell_size;
+        for (x, y) in desktop.clicks.drain(..) {
+            stage.click(((x - world.x as f64) / cell as f64) as i32, ((y - world.y as f64) / cell as f64) as i32);
         }
         if now < next_frame {
             continue;
@@ -170,14 +194,17 @@ fn main() {
         if ready.is_empty() {
             continue;
         }
-        let seconds = start.elapsed().as_secs_f32() * settings.config.rain.animation_speed;
+        let regions: Vec<CellRect> = desktop.panels.iter().filter(|p| p.configured).map(|p| cell_rect(p.rect, world, cell)).collect();
+        stage.frame(&settings.config, seconds, &regions);
+        renderer.set_text_grid(stage.grid.cols, stage.grid.rows, &stage.grid.cells);
+        let text_colors = stage::text_colors(&settings.config, settings.palette.text);
         let frame = Frame {
             time: shader_time(seconds),
             world,
             grid: cells,
             config: &settings.config,
             palette: &settings.palette,
-            text_colors: &[settings.palette.text],
+            text_colors: &text_colors,
         };
         for (n, &index) in ready.iter().enumerate() {
             let panel = &mut desktop.panels[index];

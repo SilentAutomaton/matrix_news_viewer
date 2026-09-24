@@ -14,6 +14,7 @@ pub struct Palette {
 }
 
 pub const LUT_SIZE: usize = 256;
+const ORANGE: Rgb = [1.0, 0.55, 0.1];
 
 pub fn parse_hex(text: &str) -> Option<Rgb> {
     let hex = text.trim().trim_start_matches('#');
@@ -44,7 +45,7 @@ struct Base {
     background: Rgb,
 }
 
-fn preset(hue: f32) -> Base {
+fn preset(hue: f32, text: Rgb) -> Base {
     Base {
         stops: vec![
             (0.0, hsl(hue, 0.9, 0.0)),
@@ -53,7 +54,7 @@ fn preset(hue: f32) -> Base {
             (0.8, hsl(hue, 0.9, 0.8)),
         ],
         cursor: hsl(hue - 0.058, 1.0, 0.73),
-        text: hsl((hue + 0.62) % 1.0, 1.0, 0.6),
+        text,
         background: [0.0; 3],
     }
 }
@@ -71,18 +72,18 @@ fn from_theme(theme: &HashMap<String, String>) -> Base {
             (0.8, mix(rain, [1.0; 3], 0.3)),
         ],
         cursor: color("cursor", mix(rain, [1.0; 3], 0.6)),
-        text: color("text", [1.0, 0.55, 0.1]),
+        text: color("text", ORANGE),
         background: [0.0; 3],
     }
 }
 
 fn base(config: &config::Palette, theme: &HashMap<String, String>) -> Base {
     match config.preset.as_str() {
-        "amber" => preset(0.1),
-        "ice" => preset(0.55),
-        "red" => preset(0.0),
+        "amber" => preset(0.1, hsl(0.55, 1.0, 0.6)),
+        "ice" => preset(0.55, ORANGE),
+        "red" => preset(0.0, hsl(0.55, 1.0, 0.6)),
         "theme" => from_theme(theme),
-        _ => preset(0.3),
+        _ => preset(0.3, ORANGE),
     }
 }
 

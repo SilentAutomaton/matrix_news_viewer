@@ -33,7 +33,6 @@ pub struct Rect {
 }
 
 pub struct Panel {
-    pub name: String,
     pub output: WlOutput,
     pub layer: LayerSurface,
     pub rect: Rect,
@@ -118,7 +117,7 @@ impl Desktop {
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_size(0, 0);
         layer.commit();
-        self.panels.push(Panel { name, output, layer, rect, scale, configured: false, frame_ready: false, target: None });
+        self.panels.push(Panel { output, layer, rect, scale, configured: false, frame_ready: false, target: None });
     }
 
     fn panel_of(&mut self, surface: &WlSurface) -> Option<&mut Panel> {
@@ -213,11 +212,10 @@ impl SeatHandler for Desktop {
     }
 
     fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlSeat, capability: Capability) {
-        if capability == Capability::Pointer {
-            if let Some(pointer) = self.pointer.take() {
+        if capability == Capability::Pointer
+            && let Some(pointer) = self.pointer.take() {
                 pointer.pointer().release();
             }
-        }
     }
 
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlSeat) {}
