@@ -91,8 +91,8 @@ impl Renderer {
         unsafe {
             gl.bind_texture(glow::TEXTURE_2D, Some(self.columns));
             gl.tex_image_2d(
-                glow::TEXTURE_2D, 0, glow::RGB32F as i32, (texels.len() / 3) as i32, 1, 0,
-                glow::RGB, glow::FLOAT, glow::PixelUnpackData::Slice(Some(&bytes)),
+                glow::TEXTURE_2D, 0, glow::RGBA32F as i32, (texels.len() / 4) as i32, 1, 0,
+                glow::RGBA, glow::FLOAT, glow::PixelUnpackData::Slice(Some(&bytes)),
             );
         }
     }

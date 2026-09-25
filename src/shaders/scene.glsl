@@ -22,7 +22,7 @@ uniform sampler2D rainAtlas;
 uniform sampler2D textAtlas;
 uniform vec2 textAtlasGrid;
 uniform sampler2D textGrid;
-// Per column: time offset, speed, intro offset. The CPU uses the same values to time headlines.
+// Per column: time offset, speed, intro offset, raining. The CPU uses the same values to time headlines.
 uniform sampler2D columns;
 
 uniform sampler2D paletteLut;
@@ -39,12 +39,12 @@ float wobble(float x) {
     return x + 0.3 * sin(SQRT_2 * x) + 0.2 * sin(SQRT_5 * x);
 }
 
-vec3 column(float x) {
-    return texelFetch(columns, ivec2(x, 0), 0).rgb;
+vec4 column(float x) {
+    return texelFetch(columns, ivec2(x, 0), 0);
 }
 
 float rainBrightness(vec2 glyphPos) {
-    vec3 c = column(glyphPos.x);
+    vec4 c = column(glyphPos.x);
     float columnTime = c.r + time * fallSpeed * c.g;
     return 1.0 - fract(wobble((glyphPos.y * 0.01 + columnTime) / raindropLength));
 }
@@ -100,7 +100,7 @@ vec3 scene(vec2 worldPos) {
     bool cursor = brightness > rainBrightness(glyphPos - vec2(0.0, 1.0))
         || (activated && introProgress(glyphPos - vec2(0.0, 1.0)) <= 0.0);
     float base = (brightness + max(0.0, 1.0 - progress * 5.0)) * baseContrast + baseBrightness;
-    base *= float(activated);
+    base *= float(activated) * column(glyphPos.x).a;
 
     vec4 overlay = texelFetch(textGrid, ivec2(cell), 0);
     int kind = int(overlay.g * 255.0 + 0.5);

@@ -31,3 +31,19 @@ pub fn no_news(path: &Path, reason: &str) -> String {
 pub fn link_failed(url: &str) -> String {
     format!("Cannot open {url}: xdg-open is not available.")
 }
+
+pub fn usage() -> String {
+    "Usage: matrix-news-viewer [get <section.key> | set <section.key> <value>]. Without arguments it runs the wallpaper.".into()
+}
+
+pub fn unknown_key(key: &str) -> String {
+    format!("\"{key}\" is not a setting. Use a section and a key from config.example.toml, such as rain.fall_speed.")
+}
+
+pub fn bad_value(key: &str, raw: &str) -> String {
+    format!("\"{raw}\" does not fit {key}. Give a value of the same kind as in config.example.toml.")
+}
+
+pub fn bad_value_reason(key: &str, raw: &str, reason: &str) -> String {
+    format!("\"{raw}\" cannot be stored in {key}: {reason}. The config file is unchanged.")
+}

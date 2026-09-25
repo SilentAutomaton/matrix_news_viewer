@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub display: Display,
@@ -13,7 +13,7 @@ pub struct Config {
     pub feed: Feed,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Display {
     pub fps: f32,
@@ -21,7 +21,7 @@ pub struct Display {
     pub outputs: Vec<String>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Palette {
     pub preset: String,
@@ -33,19 +33,20 @@ pub struct Palette {
     pub dither: f32,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Stop {
     pub at: f32,
     pub color: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rain {
     pub cell_width: f32,
     pub cell_height: f32,
     pub glyph_aspect: f32,
+    pub density: f32,
     pub animation_speed: f32,
     pub fall_speed: f32,
     pub raindrop_length: f32,
@@ -56,7 +57,7 @@ pub struct Rain {
     pub skip_intro: bool,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Bloom {
     pub strength: f32,
@@ -64,7 +65,7 @@ pub struct Bloom {
     pub threshold: f32,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Text {
     pub font: String,
@@ -77,7 +78,7 @@ pub struct Text {
     pub fallback: Vec<String>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct Feed {
     pub db: String,
@@ -92,14 +93,14 @@ pub struct Feed {
     pub sources: Vec<Source>,
 }
 
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TimeKind {
     Unix,
     Iso,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
     pub matches: String,
@@ -138,10 +139,11 @@ impl Default for Rain {
             cell_width: 9.0,
             cell_height: 20.0,
             glyph_aspect: 1.4,
+            density: 0.5,
             animation_speed: 1.0,
-            fall_speed: 0.3,
+            fall_speed: 0.2,
             raindrop_length: 0.75,
-            cycle_speed: 1.8,
+            cycle_speed: 1.2,
             glyphs: 57,
             base_brightness: -0.5,
             base_contrast: 1.1,

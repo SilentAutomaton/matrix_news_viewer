@@ -28,11 +28,13 @@ cell_width = 9.0
 cell_height = 20.0
 # Height of a falling glyph relative to its width.
 glyph_aspect = 1.4
+# Share of columns with rain, 0 to 1.
+density = 0.5
 animation_speed = 1.0
-fall_speed = 0.3
+fall_speed = 0.2
 raindrop_length = 0.75
 # Glyph changes per second in each cell.
-cycle_speed = 1.8
+cycle_speed = 1.2
 # How many glyphs of the Matrix atlas fall (up to 64).
 glyphs = 57
 base_brightness = -0.5

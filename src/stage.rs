@@ -41,7 +41,7 @@ impl Stage {
     pub fn new(config: &Config) -> Self {
         Self {
             grid: Grid::new(1, 1),
-            columns: rain::columns(1),
+            columns: rain::columns(1, 1.0),
             headlines: Headlines::new(0.0),
             picker: Picker::new(),
             news: Vec::new(),
@@ -56,7 +56,7 @@ impl Stage {
 
     pub fn reset(&mut self, config: &Config, cols: i32, rows: i32, now: f32) {
         self.grid = Grid::new(cols, rows);
-        self.columns = rain::columns(cols);
+        self.columns = rain::columns(cols, config.rain.density);
         self.headlines = Headlines::new(now + intro_seconds(config, rows));
         self.db = crate::config::expand(&config.feed.db);
         self.queried = None;

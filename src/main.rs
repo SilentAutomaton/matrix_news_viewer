@@ -1,4 +1,5 @@
 mod atlas;
+mod cli;
 mod config;
 mod gl;
 mod headline;
@@ -131,6 +132,17 @@ fn fail(message: String) -> ! {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match cli::run(&args) {
+        Some(Ok(output)) => {
+            if !output.is_empty() {
+                println!("{output}");
+            }
+            return;
+        }
+        Some(Err(message)) => fail(message),
+        None => {}
+    }
     let mut settings = Settings::load();
     let conn = Connection::connect_to_env().unwrap_or_else(|_| fail(notices::no_wayland()));
     let (globals, queue) = registry_queue_init::<Desktop>(&conn).unwrap_or_else(|_| fail(notices::no_wayland()));
