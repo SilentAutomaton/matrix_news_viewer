@@ -29,6 +29,13 @@ The palette preset `theme` reads `~/.config/matrix-news-viewer/theme.toml`
 (`rain`, `cursor`, `text`, `background` as `"#rrggbb"`), so a theme switcher
 can recolour the rain live.
 
+Single keys can be read and written from scripts, keeping comments in the file:
+
+```
+matrix-news-viewer get rain.fall_speed
+matrix-news-viewer set rain.density 0.3
+```
+
 ## Credits
 
 Glyph atlas and rain shaders: [Rezmason/matrix](https://github.com/Rezmason/matrix),
