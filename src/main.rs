@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod gl;
 mod headline;
+mod model;
 mod news;
 mod notices;
 mod palette;
@@ -24,11 +25,10 @@ use smithay_client_toolkit::reexports::{
 use smithay_client_toolkit::shell::WaylandSurface;
 
 use config::Config;
-use palette::Palette;
-use render::{Frame, Renderer};
-use headline::CellRect;
+use model::{CellRect, Frame, Palette, Rect};
+use render::Renderer;
 use stage::Stage;
-use wayland::{Desktop, Rect};
+use wayland::Desktop;
 
 const POLL: Duration = Duration::from_secs(2);
 
@@ -121,7 +121,7 @@ fn cell_rect(rect: Rect, world: Rect, cell: (f32, f32)) -> CellRect {
     CellRect { col: left, row: top, cols: right - left, rows: bottom - top }
 }
 
-// ponytail: float time loses precision after hours, so it jumps back once an hour past the intro.
+// f32 time loses precision after a few hours, so past the intro it jumps back once an hour.
 fn shader_time(seconds: f32) -> f32 {
     if seconds < 7200.0 { seconds } else { 3600.0 + (seconds - 3600.0) % 3600.0 }
 }

@@ -1,9 +1,9 @@
+// Each output draws its crop of one world-sized scene. Method described in
+// https://github.com/HelpFreedom/matrix-rain-saver; implementation is our own.
+
 use glow::{HasContext, NativeFramebuffer, NativeProgram, NativeTexture, NativeVertexArray};
 
-use crate::atlas::{Image, TextAtlas};
-use crate::config::Config;
-use crate::palette::{LUT_SIZE, Palette, Rgb};
-use crate::wayland::Rect;
+use crate::model::{Frame, Image, LUT_SIZE, Palette, Rect, Rgb, TEXT_COLORS, TextAtlas};
 
 const VERTEX: &str = include_str!("shaders/fullscreen.vert");
 const SCENE: &str = include_str!("shaders/scene.glsl");
@@ -11,17 +11,6 @@ const BLOOM_SOURCE: &str = include_str!("shaders/bloom_source.frag");
 const BLUR: &str = include_str!("shaders/blur.frag");
 const PANEL: &str = include_str!("shaders/panel.frag");
 const LEVELS: usize = 5;
-pub const TEXT_COLORS: usize = 16;
-
-pub struct Frame<'a> {
-    pub time: f32,
-    pub world: Rect,
-    pub grid: (i32, i32),
-    pub config: &'a Config,
-    pub palette: &'a Palette,
-    pub text_colors: &'a [Rgb],
-}
-
 struct Target {
     framebuffer: NativeFramebuffer,
     texture: NativeTexture,

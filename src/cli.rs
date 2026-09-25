@@ -5,8 +5,7 @@ use toml_edit::{DocumentMut, Item, Table, value};
 use crate::config;
 use crate::notices;
 
-// `get <section.key>` prints the value in effect; `set <section.key> <value>` writes it
-// into the config file, keeping its comments. The running wallpaper picks it up.
+// Writes go through toml_edit so the comments and layout of a hand-edited file survive.
 pub fn run(args: &[String]) -> Option<Result<String, String>> {
     let path = config::dir().join("config.toml");
     match args {

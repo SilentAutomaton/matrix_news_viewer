@@ -2,18 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub struct Image {
-    pub width: u32,
-    pub height: u32,
-    pub pixels: Vec<u8>,
-}
-
-pub struct TextAtlas {
-    pub image: Image,
-    pub columns: u32,
-    pub rows: u32,
-    pub index: HashMap<char, u8>,
-}
+use crate::model::{Image, TextAtlas};
 
 const RAIN_ATLAS: &[u8] = include_bytes!("../assets/matrixcode_msdf.png");
 const COLUMNS: u32 = 16;

@@ -1,20 +1,12 @@
 use std::f32::consts::{PI, SQRT_2};
 
 use crate::config::Rain;
+use crate::model::Column;
 use crate::rng::hash;
 
 const SQRT_5: f32 = 2.236_068;
 const SEARCH_STEP: f32 = 1.0 / 60.0;
 const SEARCH_LIMIT: f32 = 30.0;
-
-// Per-column constants shared with the shader through a texture, so the CPU knows
-// exactly when a raindrop head passes any cell.
-pub struct Column {
-    pub time_offset: f32,
-    pub speed: f32,
-    pub intro_offset: f32,
-    pub active: bool,
-}
 
 fn unit(seed: i64, salt: i64) -> f32 {
     (hash(seed, salt, 0x5eed) >> 40) as f32 / (1u64 << 24) as f32

@@ -20,17 +20,9 @@ use smithay_client_toolkit::{
     shm::{Shm, ShmHandler},
 };
 
-use crate::gl::Target;
+use crate::model::{Rect, Target};
 
 const BUTTON_LEFT: u32 = 0x110;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Rect {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-}
 
 pub struct Panel {
     pub output: WlOutput,

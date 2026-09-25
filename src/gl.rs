@@ -4,16 +4,13 @@ use khronos_egl as egl;
 use smithay_client_toolkit::reexports::client::{Connection, Proxy, protocol::wl_surface::WlSurface};
 use wayland_egl::WlEglSurface;
 
+use crate::model::Target;
+
 pub struct Egl {
     egl: egl::Instance<egl::Static>,
     display: egl::Display,
     config: egl::Config,
     context: egl::Context,
-}
-
-pub struct Target {
-    window: WlEglSurface,
-    surface: egl::Surface,
 }
 
 impl Egl {

@@ -1,19 +1,8 @@
 use std::collections::HashMap;
 
 use crate::config;
+use crate::model::{LUT_SIZE, Palette, Rgb};
 
-pub type Rgb = [f32; 3];
-
-pub struct Palette {
-    pub lut: Vec<u8>,
-    pub cursor: Rgb,
-    pub cursor_intensity: f32,
-    pub text: Rgb,
-    pub background: Rgb,
-    pub dither: f32,
-}
-
-pub const LUT_SIZE: usize = 256;
 const ORANGE: Rgb = [1.0, 0.55, 0.1];
 
 pub fn parse_hex(text: &str) -> Option<Rgb> {

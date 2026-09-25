@@ -3,14 +3,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::atlas::{self, TextAtlas};
+use crate::atlas;
 use crate::config::Config;
-use crate::headline::{CellRect, Grid, Headlines};
-use crate::news::{self, Headline, Picker};
+use crate::headline::Headlines;
+use crate::model::{CellRect, Column, Grid, Headline, Rgb, TEXT_COLORS, TextAtlas};
+use crate::news::{self, Picker};
 use crate::notices;
-use crate::palette::{Rgb, parse_hex};
-use crate::rain::{self, Column};
-use crate::render::TEXT_COLORS;
+use crate::palette::parse_hex;
+use crate::rain;
 
 const REQUERY: Duration = Duration::from_secs(600);
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::config::Text;
-use crate::news::Pick;
+use crate::model::{CellRect, Grid, Pick};
 use crate::rng::Rng;
 
 pub const KIND_TEXT: u8 = 1;
@@ -10,29 +10,6 @@ pub const KIND_CATCH: u8 = 2;
 const SINGLE_LINE_MAX: usize = 36;
 // How long a raindrop head holds a letter in the cursor colour while it catches or drops it.
 const CATCH: f32 = 0.35;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CellRect {
-    pub col: i32,
-    pub row: i32,
-    pub cols: i32,
-    pub rows: i32,
-}
-
-impl CellRect {
-    fn grow(self, cols: i32, rows: i32) -> Self {
-        Self { col: self.col - cols, row: self.row - rows, cols: self.cols + 2 * cols, rows: self.rows + 2 * rows }
-    }
-
-    fn overlaps(&self, other: &CellRect) -> bool {
-        self.col < other.col + other.cols && other.col < self.col + self.cols
-            && self.row < other.row + other.rows && other.row < self.row + self.rows
-    }
-
-    fn contains(&self, col: i32, row: i32) -> bool {
-        col >= self.col && col < self.col + self.cols && row >= self.row && row < self.row + self.rows
-    }
-}
 
 fn normalize(c: char) -> char {
     match c {
@@ -103,7 +80,6 @@ pub struct Message {
 }
 
 impl Message {
-    // One RGBA texel per cell: glyph, kind, colour index, intensity.
     fn paint(&self, t: f32, text: &Text, grid: &mut Grid) {
         for letter in &self.letters {
             let cell = if t < letter.caught || t >= letter.released {
@@ -141,25 +117,6 @@ fn message(
     }
     let end = letters.iter().map(|l| l.released).fold(t, f32::max);
     Message { letters, bounds, url: pick.url, color: pick.color, end }
-}
-
-pub struct Grid {
-    pub cols: i32,
-    pub rows: i32,
-    pub cells: Vec<u8>,
-}
-
-impl Grid {
-    pub fn new(cols: i32, rows: i32) -> Self {
-        Self { cols, rows, cells: vec![0; (cols * rows * 4).max(4) as usize] }
-    }
-
-    fn set(&mut self, col: i32, row: i32, cell: [u8; 4]) {
-        if col >= 0 && row >= 0 && col < self.cols && row < self.rows {
-            let at = ((row * self.cols + col) * 4) as usize;
-            self.cells[at..at + 4].copy_from_slice(&cell);
-        }
-    }
 }
 
 pub struct Headlines {

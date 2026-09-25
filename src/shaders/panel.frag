@@ -1,3 +1,6 @@
+// Crop of the world scene for one output. Method described in
+// https://github.com/HelpFreedom/matrix-rain-saver; implementation is our own.
+
 uniform vec2 origin;
 uniform float pixelScale;
 uniform float bufferHeight;

@@ -4,21 +4,8 @@ use std::path::Path;
 use rusqlite::{Connection, OpenFlags};
 
 use crate::config::{Feed, Source, TimeKind};
+use crate::model::{Headline, Pick};
 use crate::rng::Rng;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Headline {
-    pub title: String,
-    pub url: Option<String>,
-    pub source: String,
-    pub published: f64,
-}
-
-pub struct Pick {
-    pub title: String,
-    pub url: Option<String>,
-    pub color: u8,
-}
 
 fn identifier(name: &str) -> Result<&str, String> {
     let valid = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
