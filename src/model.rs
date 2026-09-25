@@ -89,6 +89,7 @@ pub struct TextAtlas {
     pub index: HashMap<char, u8>,
 }
 
+#[derive(Clone)]
 pub struct Palette {
     pub lut: Vec<u8>,
     pub cursor: Rgb,
@@ -105,6 +106,7 @@ pub struct Column {
     pub speed: f32,
     pub intro_offset: f32,
     pub active: bool,
+    pub switched: f32,
 }
 
 pub struct Target {
@@ -114,6 +116,8 @@ pub struct Target {
 
 pub struct Frame<'a> {
     pub time: f32,
+    pub rain_clock: f32,
+    pub symbol_clock: f32,
     pub world: Rect,
     pub grid: (i32, i32),
     pub config: &'a Config,

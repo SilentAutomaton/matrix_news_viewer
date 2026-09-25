@@ -112,6 +112,19 @@ fn lut(stops: &[(f32, Rgb)]) -> Vec<u8> {
     out
 }
 
+pub fn blend(from: &Palette, to: &Palette, k: f32) -> Palette {
+    let k = k.clamp(0.0, 1.0);
+    let lut = from.lut.iter().zip(&to.lut).map(|(&a, &b)| (a as f32 + (b as f32 - a as f32) * k).round() as u8).collect();
+    Palette {
+        lut,
+        cursor: mix(from.cursor, to.cursor, k),
+        cursor_intensity: from.cursor_intensity + (to.cursor_intensity - from.cursor_intensity) * k,
+        text: mix(from.text, to.text, k),
+        background: mix(from.background, to.background, k),
+        dither: to.dither,
+    }
+}
+
 pub fn parse_theme(text: &str) -> HashMap<String, String> {
     toml::from_str(text).unwrap_or_default()
 }
@@ -133,6 +146,15 @@ mod tests {
         assert_eq!(&table[0..3], &[0, 0, 0]);
         assert_eq!(table[64 * 3], 128);
         assert_eq!(&table[(LUT_SIZE - 1) * 3..], &[255, 255, 255]);
+    }
+
+    #[test]
+    fn blend_reaches_both_ends() {
+        let green = build(&config::Palette::default(), &HashMap::new());
+        let red = build(&config::Palette { preset: "red".into(), ..Default::default() }, &HashMap::new());
+        assert_eq!(blend(&green, &red, 0.0).lut, green.lut);
+        assert_eq!(blend(&green, &red, 1.0).lut, red.lut);
+        assert_eq!(blend(&green, &red, 1.0).cursor, red.cursor);
     }
 
     #[test]

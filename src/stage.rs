@@ -25,16 +25,18 @@ pub struct Stage {
     db_modified: Option<SystemTime>,
     queried: Option<Instant>,
     reported: bool,
-    last_t: f32,
+    last_clock: f32,
+    intro_end: f32,
 }
 
 fn unix_now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
 }
 
-// The intro rain reaches the bottom row after this many seconds; text waits for it.
-fn intro_seconds(config: &Config, rows: i32) -> f32 {
-    if config.rain.skip_intro { 1.0 } else { 9.5 + rows as f32 / (100.0 * config.rain.fall_speed.max(0.01)) }
+// The intro rain reaches the bottom row at this rain clock; text waits for it. The
+// earliest column starts 1.7 clock units late (see rain::columns).
+fn intro_end(config: &Config, rows: i32) -> f32 {
+    if config.rain.skip_intro { 0.0 } else { rows as f32 / 100.0 + 1.9 }
 }
 
 impl Stage {
@@ -50,14 +52,16 @@ impl Stage {
             db_modified: None,
             queried: None,
             reported: false,
-            last_t: 0.0,
+            last_clock: 0.0,
+            intro_end: 0.0,
         }
     }
 
     pub fn reset(&mut self, config: &Config, cols: i32, rows: i32, now: f32) {
         self.grid = Grid::new(cols, rows);
         self.columns = rain::columns(cols, config.rain.density);
-        self.headlines = Headlines::new(now + intro_seconds(config, rows));
+        self.headlines = Headlines::new(now);
+        self.intro_end = intro_end(config, rows);
         self.db = crate::config::expand(&config.feed.db);
         self.queried = None;
     }
@@ -103,14 +107,28 @@ impl Stage {
         }
     }
 
-    pub fn frame(&mut self, config: &Config, t: f32, regions: &[CellRect]) {
+    pub fn set_density(&mut self, density: f32, clock: f32) {
+        rain::set_density(&mut self.columns, density, clock);
+    }
+
+    pub fn follow_feed(&mut self, config: &Config) {
+        let db = crate::config::expand(&config.feed.db);
+        if db != self.db {
+            self.db = db;
+            self.queried = None;
+        }
+    }
+
+    // `t` is seconds since start and paces new headlines; `clock` is the rain clock.
+    pub fn frame(&mut self, config: &Config, t: f32, clock: f32, regions: &[CellRect]) {
         let text = &config.text;
-        if t < self.last_t {
+        if clock < self.last_clock {
             self.headlines = Headlines::new(t);
         }
-        self.last_t = t;
-        self.headlines.update(t);
-        if self.headlines.wants_new(t, text) && !self.index.is_empty() {
+        self.last_clock = clock;
+        self.headlines.update(clock);
+        if clock >= self.intro_end && self.headlines.wants_new(t, text) && !self.index.is_empty() {
+            self.headlines.schedule_next(t, text);
             let pick = match self.news.is_empty() {
                 true => self.picker.fallback(&text.fallback),
                 false => self.picker.next(&self.news, &config.feed, unix_now()),
@@ -118,10 +136,10 @@ impl Stage {
             let (columns, rows) = (&self.columns, self.grid.rows);
             let drop = |col: i32, row: i32, after: f32| rain::next_drop(&columns[col as usize], row, rows, after, &config.rain);
             if let Some(pick) = pick {
-                self.headlines.spawn(t, text, pick, regions, &self.index, &drop);
+                self.headlines.spawn(clock, config, pick, regions, &self.index, &drop);
             }
         }
-        self.headlines.paint(t, text, &mut self.grid);
+        self.headlines.paint(clock, text, &mut self.grid);
     }
 
     pub fn click(&self, col: i32, row: i32) {

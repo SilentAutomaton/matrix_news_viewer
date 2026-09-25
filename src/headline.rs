@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::config::Text;
+use crate::config::{Config, Text};
 use crate::model::{CellRect, Grid, Pick};
 use crate::rng::Rng;
 
@@ -8,8 +8,8 @@ pub const KIND_TEXT: u8 = 1;
 pub const KIND_CATCH: u8 = 2;
 
 const SINGLE_LINE_MAX: usize = 36;
-// How long a raindrop head holds a letter in the cursor colour while it catches or drops it.
-const CATCH: f32 = 0.35;
+// Seconds a raindrop head holds a letter in the cursor colour while it catches or drops it.
+const CATCH_SECONDS: f32 = 0.35;
 
 fn normalize(c: char) -> char {
     match c {
@@ -76,15 +76,16 @@ pub struct Message {
     pub bounds: CellRect,
     pub url: Option<String>,
     color: u8,
+    catch: f32,
     end: f32,
 }
 
 impl Message {
-    fn paint(&self, t: f32, text: &Text, grid: &mut Grid) {
+    fn paint(&self, clock: f32, text: &Text, grid: &mut Grid) {
         for letter in &self.letters {
-            let cell = if t < letter.caught || t >= letter.released {
+            let cell = if clock < letter.caught || clock >= letter.released {
                 continue;
-            } else if t < letter.caught + CATCH || t >= letter.released - CATCH {
+            } else if clock < letter.caught + self.catch || clock >= letter.released - self.catch {
                 [letter.glyph, KIND_CATCH, 0, 255]
             } else {
                 [letter.glyph, KIND_TEXT, self.color, (text.brightness * 255.0) as u8]
@@ -94,10 +95,13 @@ impl Message {
     }
 }
 
+// Letter times are rain clock values, so a letter stays with its raindrop when the
+// fall speed changes later; seconds are converted once, at the current speed.
 fn message(
-    lines: &[Vec<u8>], bounds: CellRect, pick: Pick, text: &Text, space: Option<u8>, t: f32,
+    lines: &[Vec<u8>], bounds: CellRect, pick: Pick, config: &Config, space: Option<u8>, clock: f32,
     drop: &dyn Fn(i32, i32, f32) -> f32,
 ) -> Message {
+    let fall_speed = config.rain.fall_speed;
     let mut letters = Vec::new();
     for (line_index, line) in lines.iter().enumerate() {
         let offset = (bounds.cols - line.len() as i32) / 2;
@@ -107,16 +111,17 @@ fn message(
                 continue;
             }
             let col = bounds.col + offset + i as i32;
-            letters.push(Letter { col, row, glyph, caught: drop(col, row, t), released: 0.0 });
+            letters.push(Letter { col, row, glyph, caught: drop(col, row, clock), released: 0.0 });
         }
     }
-    let shown = letters.iter().map(|l| l.caught).fold(t, f32::max) + CATCH;
-    let dwell_end = shown + text.dwell + 0.055 * letters.len() as f32;
+    let catch = CATCH_SECONDS * fall_speed;
+    let shown = letters.iter().map(|l| l.caught).fold(clock, f32::max) + catch;
+    let dwell_end = shown + (config.text.dwell + 0.055 * letters.len() as f32) * fall_speed;
     for letter in &mut letters {
-        letter.released = drop(letter.col, letter.row, dwell_end) + CATCH;
+        letter.released = drop(letter.col, letter.row, dwell_end) + catch;
     }
-    let end = letters.iter().map(|l| l.released).fold(t, f32::max);
-    Message { letters, bounds, url: pick.url, color: pick.color, end }
+    let end = letters.iter().map(|l| l.released).fold(clock, f32::max);
+    Message { letters, bounds, url: pick.url, color: pick.color, catch, end }
 }
 
 pub struct Headlines {
@@ -134,17 +139,22 @@ impl Headlines {
         t >= self.next_spawn && self.messages.len() < text.max_concurrent
     }
 
-    pub fn update(&mut self, t: f32) {
-        self.messages.retain(|m| t < m.end);
+    pub fn update(&mut self, clock: f32) {
+        self.messages.retain(|m| clock < m.end);
     }
 
-    // `drop(col, row, after)` is when the next raindrop head reaches that cell.
-    pub fn spawn(
-        &mut self, t: f32, text: &Text, pick: Pick, regions: &[CellRect], index: &HashMap<char, u8>,
-        drop: &dyn Fn(i32, i32, f32) -> f32,
-    ) {
+    // Headlines are paced in seconds, whatever the rain speed.
+    pub fn schedule_next(&mut self, t: f32, text: &Text) {
         let span = (text.interval_max - text.interval_min).max(0.0);
         self.next_spawn = t + text.interval_min + span * self.rng.unit() as f32;
+    }
+
+    // `drop(col, row, after)` returns the rain clock when the next raindrop head reaches that cell.
+    pub fn spawn(
+        &mut self, clock: f32, config: &Config, pick: Pick, regions: &[CellRect],
+        index: &HashMap<char, u8>, drop: &dyn Fn(i32, i32, f32) -> f32,
+    ) {
+        let text = &config.text;
         if regions.is_empty() {
             return;
         }
@@ -169,16 +179,16 @@ impl Headlines {
                 rows,
             };
             if self.messages.iter().all(|m| !m.bounds.grow(2, 2).overlaps(&bounds)) {
-                self.messages.push(message(&lines, bounds, pick, text, index.get(&' ').copied(), t, drop));
+                self.messages.push(message(&lines, bounds, pick, config, index.get(&' ').copied(), clock, drop));
                 return;
             }
         }
     }
 
-    pub fn paint(&self, t: f32, text: &Text, grid: &mut Grid) {
+    pub fn paint(&self, clock: f32, text: &Text, grid: &mut Grid) {
         grid.cells.fill(0);
         for message in &self.messages {
-            message.paint(t, text, grid);
+            message.paint(clock, text, grid);
         }
     }
 
@@ -231,7 +241,8 @@ mod tests {
         let mut headlines = Headlines::new(0.0);
         let pick = Pick { title: "A fairly long headline that needs two lines here".into(), url: Some("https://x.example".into()), color: 0 };
         let drop = |col: i32, _row: i32, after: f32| after + 0.5 + (col % 5) as f32 * 0.3;
-        headlines.spawn(0.0, &text, pick, &[region], &index(), &drop);
+        let config = Config { rain: crate::config::Rain { fall_speed: 1.0, ..Default::default() }, ..Default::default() };
+        headlines.spawn(0.0, &config, pick, &[region], &index(), &drop);
         let message = &headlines.messages[0];
         assert!(message.bounds.col >= region.col && message.bounds.col + message.bounds.cols <= region.col + region.cols);
         assert!(message.bounds.row >= region.row && message.bounds.row + message.bounds.rows <= region.row + region.rows);

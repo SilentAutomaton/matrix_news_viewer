@@ -14,7 +14,9 @@ uniform vec2 worldSize;
 uniform vec2 cellSize;
 uniform float glyphAspect;
 uniform float time;
-uniform float fallSpeed, raindropLength, cycleSpeed, glyphCount;
+// Clocks advance by fall_speed and cycle_speed per second, so a new speed never jumps the scene.
+uniform float rainClock, symbolClock;
+uniform float raindropLength, glyphCount;
 uniform float baseBrightness, baseContrast;
 uniform bool skipIntro;
 
@@ -22,7 +24,8 @@ uniform sampler2D rainAtlas;
 uniform sampler2D textAtlas;
 uniform vec2 textAtlasGrid;
 uniform sampler2D textGrid;
-// Per column: time offset, speed, intro offset, raining. The CPU uses the same values to time headlines.
+// Row 0 per column: time offset, speed, intro offset, raining. Row 1: rain clock of the last
+// on/off switch. The CPU uses the same values to time headlines.
 uniform sampler2D columns;
 
 uniform sampler2D paletteLut;
@@ -45,8 +48,18 @@ vec4 column(float x) {
 
 float rainBrightness(vec2 glyphPos) {
     vec4 c = column(glyphPos.x);
-    float columnTime = c.r + time * fallSpeed * c.g;
+    float columnTime = c.r + rainClock * c.g;
     return 1.0 - fract(wobble((glyphPos.y * 0.01 + columnTime) / raindropLength));
+}
+
+// A column that switches on or off does it behind a front falling from the top at the
+// drop speed: new rain starts at the top, old drops finish their fall.
+bool raining(vec2 glyphPos) {
+    vec4 c = column(glyphPos.x);
+    float switched = texelFetch(columns, ivec2(glyphPos.x, 1), 0).r;
+    float front = (rainClock - switched) * 100.0 * c.g;
+    bool belowFront = gridSize.y - glyphPos.y < front;
+    return c.a > 0.5 ? belowFront : !belowFront;
 }
 
 float introProgress(vec2 glyphPos) {
@@ -54,12 +67,12 @@ float introProgress(vec2 glyphPos) {
         return 2.0;
     }
     float offset = column(glyphPos.x).b;
-    float introTime = (time + offset) * fallSpeed / gridSize.y * 100.0;
+    float introTime = (rainClock + offset) / gridSize.y * 100.0;
     return introTime - (1.0 - glyphPos.y / gridSize.y);
 }
 
 float symbolAt(vec2 cell) {
-    float epoch = floor(time * cycleSpeed + randomFloat(cell + 0.5));
+    float epoch = floor(symbolClock + randomFloat(cell + 0.5));
     return floor(glyphCount * randomFloat(cell + vec2(epoch * 0.618, epoch * 0.382)));
 }
 
@@ -100,7 +113,7 @@ vec3 scene(vec2 worldPos) {
     bool cursor = brightness > rainBrightness(glyphPos - vec2(0.0, 1.0))
         || (activated && introProgress(glyphPos - vec2(0.0, 1.0)) <= 0.0);
     float base = (brightness + max(0.0, 1.0 - progress * 5.0)) * baseContrast + baseBrightness;
-    base *= float(activated) * column(glyphPos.x).a;
+    base *= float(activated) * float(raining(glyphPos));
 
     vec4 overlay = texelFetch(textGrid, ivec2(cell), 0);
     int kind = int(overlay.g * 255.0 + 0.5);

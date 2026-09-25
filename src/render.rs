@@ -80,7 +80,7 @@ impl Renderer {
         unsafe {
             gl.bind_texture(glow::TEXTURE_2D, Some(self.columns));
             gl.tex_image_2d(
-                glow::TEXTURE_2D, 0, glow::RGBA32F as i32, (texels.len() / 4) as i32, 1, 0,
+                glow::TEXTURE_2D, 0, glow::RGBA32F as i32, (texels.len() / 8) as i32, 2, 0,
                 glow::RGBA, glow::FLOAT, glow::PixelUnpackData::Slice(Some(&bytes)),
             );
         }
@@ -161,9 +161,9 @@ impl Renderer {
             vec2("cellSize", rain.cell_width.max(1.0), rain.cell_height.max(1.0));
             set_f(gl, program, "glyphAspect", rain.glyph_aspect);
             set_f(gl, program, "time", frame.time);
-            set_f(gl, program, "fallSpeed", rain.fall_speed);
+            set_f(gl, program, "rainClock", frame.rain_clock);
+            set_f(gl, program, "symbolClock", frame.symbol_clock);
             set_f(gl, program, "raindropLength", rain.raindrop_length);
-            set_f(gl, program, "cycleSpeed", rain.cycle_speed);
             set_f(gl, program, "glyphCount", rain.glyphs.min(64) as f32);
             set_f(gl, program, "baseBrightness", rain.base_brightness);
             set_f(gl, program, "baseContrast", rain.base_contrast);

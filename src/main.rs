@@ -31,6 +31,7 @@ use stage::Stage;
 use wayland::Desktop;
 
 const POLL: Duration = Duration::from_secs(2);
+const PALETTE_FADE: f32 = 1.2;
 
 struct Watched {
     path: PathBuf,
@@ -48,6 +49,48 @@ impl Watched {
         self.modified = modified;
         changed
     }
+}
+
+enum Change {
+    Layout,
+    Settings,
+}
+
+// Only these rebuild the grid; everything else applies to the running scene.
+fn layout_key(config: &Config) -> ((f32, f32), String) {
+    (config.rain.cell(), config.text.font.clone())
+}
+
+struct Clocks {
+    rain: f64,
+    symbol: f64,
+    last: Instant,
+}
+
+impl Clocks {
+    fn advance(&mut self, rain: &config::Rain) {
+        let now = Instant::now();
+        let seconds = (now - self.last).as_secs_f64() * rain.animation_speed as f64;
+        self.last = now;
+        self.rain += seconds * rain.fall_speed as f64;
+        self.symbol += seconds * rain.cycle_speed as f64;
+    }
+
+    // f32 loses precision as the rain clock grows, so past the intro it jumps back by
+    // 720 units, an hour at the default speed.
+    fn rain_for_shader(&self) -> f32 {
+        (if self.rain < 1440.0 { self.rain } else { 720.0 + (self.rain - 720.0) % 720.0 }) as f32
+    }
+
+    // Glyph epochs only need whole numbers; the jump comes once in about ten days.
+    fn symbol_for_shader(&self) -> f32 {
+        (self.symbol % 1.0e6) as f32
+    }
+}
+
+struct Fade {
+    from: Palette,
+    started: Instant,
 }
 
 struct Settings {
@@ -70,18 +113,20 @@ impl Settings {
         settings
     }
 
-    fn reload(&mut self) -> bool {
+    fn reload(&mut self) -> Option<Change> {
         let config_changed = self.config_file.changed();
         let theme_changed = self.theme_file.changed();
+        if !config_changed && !theme_changed {
+            return None;
+        }
+        let before = layout_key(&self.config);
         if config_changed
             && let Some(config) = read_config(&self.config_file.path) {
                 self.config = config;
             }
-        if config_changed || theme_changed {
-            let theme = std::fs::read_to_string(&self.theme_file.path).unwrap_or_default();
-            self.palette = palette::build(&self.config.palette, &palette::parse_theme(&theme));
-        }
-        config_changed || theme_changed
+        let theme = std::fs::read_to_string(&self.theme_file.path).unwrap_or_default();
+        self.palette = palette::build(&self.config.palette, &palette::parse_theme(&theme));
+        Some(if layout_key(&self.config) == before { Change::Settings } else { Change::Layout })
     }
 
     fn fps(&self) -> f32 {
@@ -121,11 +166,6 @@ fn cell_rect(rect: Rect, world: Rect, cell: (f32, f32)) -> CellRect {
     CellRect { col: left, row: top, cols: right - left, rows: bottom - top }
 }
 
-// f32 time loses precision after a few hours, so past the intro it jumps back once an hour.
-fn shader_time(seconds: f32) -> f32 {
-    if seconds < 7200.0 { seconds } else { 3600.0 + (seconds - 3600.0) % 3600.0 }
-}
-
 fn fail(message: String) -> ! {
     eprintln!("{message}");
     std::process::exit(1);
@@ -154,6 +194,9 @@ fn main() {
     let egl = gl::Egl::new(&conn).unwrap_or_else(|e| fail(notices::no_gpu(&e.to_string())));
     let mut renderer = Renderer::new(egl.glow()).unwrap_or_else(|e| fail(notices::no_gpu(&e)));
     renderer.set_palette(&settings.palette);
+    let mut shown = settings.palette.clone();
+    let mut fade: Option<Fade> = None;
+    let mut clocks = Clocks { rain: 0.0, symbol: 0.0, last: Instant::now() };
 
     let start = Instant::now();
     let mut next_frame = Instant::now();
@@ -170,21 +213,39 @@ fn main() {
                 egl.destroy(target);
             }
         }
-        let seconds = start.elapsed().as_secs_f32() * settings.config.rain.animation_speed;
+        let seconds = start.elapsed().as_secs_f32();
+        clocks.advance(&settings.config.rain);
+        let rain_clock = clocks.rain_for_shader();
         let now = Instant::now();
         if now >= next_poll {
             next_poll = now + POLL;
-            if settings.reload() {
-                renderer.set_palette(&settings.palette);
-                desktop.layout_changed = true;
+            match settings.reload() {
+                Some(Change::Layout) => desktop.layout_changed = true,
+                Some(Change::Settings) => {
+                    stage.set_density(settings.config.rain.density, rain_clock);
+                    stage.follow_feed(&settings.config);
+                    renderer.set_columns(&rain::texels(&stage.columns));
+                }
+                None => {}
+            }
+            if fade.is_none() && (settings.palette.lut != shown.lut || settings.palette.text != shown.text) {
+                fade = Some(Fade { from: shown.clone(), started: now });
             }
             stage.poll(&settings.config);
+        }
+        if let Some(active) = &fade {
+            let k = active.started.elapsed().as_secs_f32() / PALETTE_FADE;
+            shown = palette::blend(&active.from, &settings.palette, k);
+            renderer.set_palette(&shown);
+            if k >= 1.0 {
+                fade = None;
+            }
         }
         if desktop.layout_changed {
             desktop.layout_changed = false;
             world = desktop.world();
             cells = grid(world, settings.config.rain.cell());
-            stage.reset(&settings.config, cells.0, cells.1, shader_time(seconds));
+            stage.reset(&settings.config, cells.0, cells.1, seconds);
             stage.poll(&settings.config);
             renderer.set_columns(&rain::texels(&stage.columns));
             let scale = desktop.panels.iter().map(|p| p.scale).max().unwrap_or(1);
@@ -210,15 +271,17 @@ fn main() {
             continue;
         }
         let regions: Vec<CellRect> = desktop.panels.iter().filter(|p| p.configured).map(|p| cell_rect(p.rect, world, cell)).collect();
-        stage.frame(&settings.config, shader_time(seconds), &regions);
+        stage.frame(&settings.config, seconds, rain_clock, &regions);
         renderer.set_text_grid(stage.grid.cols, stage.grid.rows, &stage.grid.cells);
-        let text_colors = stage::text_colors(&settings.config, settings.palette.text);
+        let text_colors = stage::text_colors(&settings.config, shown.text);
         let frame = Frame {
-            time: shader_time(seconds),
+            time: seconds % 3600.0,
+            rain_clock,
+            symbol_clock: clocks.symbol_for_shader(),
             world,
             grid: cells,
             config: &settings.config,
-            palette: &settings.palette,
+            palette: &shown,
             text_colors: &text_colors,
         };
         for (n, &index) in ready.iter().enumerate() {
