@@ -3,7 +3,8 @@
 A live wallpaper for Wayland compositors with the layer-shell protocol
 (Hyprland, Sway, river, niri). Vertical Matrix rain covers all monitors as one
 scene. Headlines from a newsboat cache appear inside the rain; a click on a
-headline opens its link.
+headline rains in the first paragraph of the item, a double click opens its
+link.
 
 The program never goes to the network. News arrive only when you run
 `newsboat -x reload`.

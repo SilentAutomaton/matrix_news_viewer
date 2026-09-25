@@ -67,6 +67,8 @@ table = "rss_item"
 title = "title"
 url = "url"
 source = "feedurl"
+# Item body; a click shows its first paragraph. Empty turns this off.
+content = "content"
 time = "pubDate"
 # unix (seconds) or iso (text dates).
 time_kind = "unix"

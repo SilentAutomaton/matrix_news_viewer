@@ -8,6 +8,7 @@ pub const KIND_TEXT: u8 = 1;
 pub const KIND_CATCH: u8 = 2;
 
 const SINGLE_LINE_MAX: usize = 36;
+const PARAGRAPH_LINES: usize = 8;
 // Seconds a raindrop head holds a letter in the cursor colour while it catches or drops it.
 const CATCH_SECONDS: f32 = 0.35;
 
@@ -33,9 +34,9 @@ fn truncate(line: &[char], max: usize) -> Vec<char> {
     cut
 }
 
-pub fn layout(title: &str, max_width: usize, index: &HashMap<char, u8>) -> Vec<Vec<u8>> {
+fn glyphs(text: &str, index: &HashMap<char, u8>) -> Vec<char> {
     let mut chars: Vec<char> = Vec::new();
-    for c in title.chars().flat_map(char::to_uppercase).map(normalize) {
+    for c in text.chars().flat_map(char::to_uppercase).map(normalize) {
         if c == ' ' && chars.last().is_none_or(|&last| last == ' ') {
             continue;
         }
@@ -46,6 +47,15 @@ pub fn layout(title: &str, max_width: usize, index: &HashMap<char, u8>) -> Vec<V
     while chars.last() == Some(&' ') {
         chars.pop();
     }
+    chars
+}
+
+fn to_glyphs(lines: &[Vec<char>], index: &HashMap<char, u8>) -> Vec<Vec<u8>> {
+    lines.iter().map(|line| line.iter().map(|c| index[c]).collect()).collect()
+}
+
+pub fn layout(title: &str, max_width: usize, index: &HashMap<char, u8>) -> Vec<Vec<u8>> {
+    let chars = glyphs(title, index);
     if chars.is_empty() || max_width < 4 {
         return Vec::new();
     }
@@ -60,7 +70,31 @@ pub fn layout(title: &str, max_width: usize, index: &HashMap<char, u8>) -> Vec<V
         let (first, second) = chars.split_at(split);
         vec![first.to_vec(), second.iter().skip_while(|&&c| c == ' ').copied().collect()]
     };
-    lines.iter().map(|line| truncate(line, max_width).iter().map(|c| index[c]).collect()).collect()
+    let lines: Vec<Vec<char>> = lines.iter().map(|line| truncate(line, max_width)).collect();
+    to_glyphs(&lines, index)
+}
+
+fn wrap(chars: &[char], width: usize, max_lines: usize) -> Vec<Vec<char>> {
+    let mut lines: Vec<Vec<char>> = Vec::new();
+    let mut rest = chars;
+    while !rest.is_empty() && lines.len() < max_lines {
+        let split = if rest.len() <= width {
+            rest.len()
+        } else {
+            rest[..=width].iter().rposition(|&c| c == ' ').filter(|&s| s > 0).unwrap_or(width)
+        };
+        lines.push(rest[..split].to_vec());
+        rest = &rest[split..];
+        while rest.first() == Some(&' ') {
+            rest = &rest[1..];
+        }
+    }
+    if !rest.is_empty()
+        && let Some(last) = lines.last_mut() {
+            last.truncate(width - 1);
+            last.push('…');
+        }
+    lines
 }
 
 struct Letter {
@@ -74,7 +108,9 @@ struct Letter {
 pub struct Message {
     letters: Vec<Letter>,
     pub bounds: CellRect,
+    region: CellRect,
     pub url: Option<String>,
+    body: Option<String>,
     color: u8,
     catch: f32,
     end: f32,
@@ -93,35 +129,63 @@ impl Message {
             grid.set(letter.col, letter.row, cell);
         }
     }
+
+    // Letter times are rain clock values, so a letter stays with its raindrop when the
+    // fall speed changes later; seconds are converted once, at the current speed.
+    // Letters that already fell are caught again, and everything stays for the new dwell.
+    fn release(&mut self, clock: f32, config: &Config, drop: &dyn Fn(i32, i32, f32) -> f32) {
+        for letter in &mut self.letters {
+            if clock >= letter.released - self.catch {
+                letter.caught = drop(letter.col, letter.row, clock);
+            }
+        }
+        let shown = self.letters.iter().map(|l| l.caught).fold(clock, f32::max) + self.catch;
+        let dwell_end = shown + (config.text.dwell + 0.055 * self.letters.len() as f32) * config.rain.fall_speed;
+        for letter in &mut self.letters {
+            letter.released = drop(letter.col, letter.row, dwell_end) + self.catch;
+        }
+        self.end = self.letters.iter().map(|l| l.released).fold(clock, f32::max);
+    }
 }
 
-// Letter times are rain clock values, so a letter stays with its raindrop when the
-// fall speed changes later; seconds are converted once, at the current speed.
-fn message(
-    lines: &[Vec<u8>], bounds: CellRect, pick: Pick, config: &Config, space: Option<u8>, clock: f32,
+fn letters(
+    lines: &[Vec<u8>], bounds: CellRect, centered: bool, space: Option<u8>, clock: f32,
     drop: &dyn Fn(i32, i32, f32) -> f32,
-) -> Message {
-    let fall_speed = config.rain.fall_speed;
+) -> Vec<Letter> {
     let mut letters = Vec::new();
     for (line_index, line) in lines.iter().enumerate() {
-        let offset = (bounds.cols - line.len() as i32) / 2;
+        let offset = if centered { (bounds.cols - line.len() as i32) / 2 } else { 0 };
         let row = bounds.row + line_index as i32;
         for (i, &glyph) in line.iter().enumerate() {
             if Some(glyph) == space {
                 continue;
             }
             let col = bounds.col + offset + i as i32;
-            letters.push(Letter { col, row, glyph, caught: drop(col, row, clock), released: 0.0 });
+            letters.push(Letter { col, row, glyph, caught: drop(col, row, clock), released: f32::INFINITY });
         }
     }
-    let catch = CATCH_SECONDS * fall_speed;
-    let shown = letters.iter().map(|l| l.caught).fold(clock, f32::max) + catch;
-    let dwell_end = shown + (config.text.dwell + 0.055 * letters.len() as f32) * fall_speed;
-    for letter in &mut letters {
-        letter.released = drop(letter.col, letter.row, dwell_end) + catch;
-    }
-    let end = letters.iter().map(|l| l.released).fold(clock, f32::max);
-    Message { letters, bounds, url: pick.url, color: pick.color, catch, end }
+    letters
+}
+
+// The paragraph goes on the side of the headline with more room, and shrinks
+// until it clears the other messages.
+fn paragraph_place(
+    chars: &[char], headline: CellRect, region: CellRect, width: usize, others: &[CellRect],
+) -> Option<(Vec<Vec<char>>, CellRect)> {
+    let margin = (region.rows / 12).max(1);
+    let below = region.row + region.rows - margin - (headline.row + headline.rows + 1);
+    let above = headline.row - 1 - (region.row + margin);
+    let room = below.max(above).min(PARAGRAPH_LINES as i32);
+    (1..=room).rev().find_map(|max_lines| {
+        let lines = wrap(chars, width, max_lines as usize);
+        let cols = lines.iter().map(Vec::len).max()? as i32;
+        let rows = lines.len() as i32;
+        let centre = headline.col + headline.cols / 2 - cols / 2;
+        let col = centre.min(region.col + region.cols - 2 - cols).max(region.col + 2);
+        let row = if below >= above { headline.row + headline.rows + 1 } else { headline.row - 1 - rows };
+        let bounds = CellRect { col, row, cols, rows };
+        others.iter().all(|o| !o.grow(2, 2).overlaps(&bounds)).then_some((lines, bounds))
+    })
 }
 
 pub struct Headlines {
@@ -179,7 +243,11 @@ impl Headlines {
                 rows,
             };
             if self.messages.iter().all(|m| !m.bounds.grow(2, 2).overlaps(&bounds)) {
-                self.messages.push(message(&lines, bounds, pick, config, index.get(&' ').copied(), clock, drop));
+                let letters = letters(&lines, bounds, true, index.get(&' ').copied(), clock, drop);
+                let catch = CATCH_SECONDS * config.rain.fall_speed;
+                let mut message = Message { letters, bounds, region, url: pick.url, body: pick.body, color: pick.color, catch, end: clock };
+                message.release(clock, config, drop);
+                self.messages.push(message);
                 return;
             }
         }
@@ -192,8 +260,37 @@ impl Headlines {
         }
     }
 
+    fn at(&self, col: i32, row: i32) -> Option<usize> {
+        self.messages.iter().position(|m| m.bounds.grow(1, 1).contains(col, row))
+    }
+
     pub fn link_at(&self, col: i32, row: i32) -> Option<&str> {
-        self.messages.iter().find(|m| m.bounds.grow(1, 1).contains(col, row))?.url.as_deref()
+        self.messages[self.at(col, row)?].url.as_deref()
+    }
+
+    pub fn same_message(&self, a: (i32, i32), b: (i32, i32)) -> bool {
+        self.messages.iter().any(|m| m.bounds.grow(1, 1).contains(a.0, a.1) && m.bounds.grow(1, 1).contains(b.0, b.1))
+    }
+
+    // Rains in the first paragraph of the item under the click, once per message.
+    pub fn expand(
+        &mut self, col: i32, row: i32, clock: f32, config: &Config, index: &HashMap<char, u8>,
+        drop: &dyn Fn(i32, i32, f32) -> f32,
+    ) {
+        let Some(at) = self.at(col, row) else { return };
+        let Some(body) = self.messages[at].body.take() else { return };
+        let others: Vec<CellRect> = self.messages.iter().enumerate().filter(|&(i, _)| i != at).map(|(_, m)| m.bounds).collect();
+        let message = &mut self.messages[at];
+        let width = config.text.max_length.min(message.region.cols.saturating_sub(4).max(0) as usize);
+        let chars = glyphs(&body, index);
+        if width < 4 || chars.is_empty() {
+            return;
+        }
+        let Some((lines, bounds)) = paragraph_place(&chars, message.bounds, message.region, width, &others) else { return };
+        let added = letters(&to_glyphs(&lines, index), bounds, false, index.get(&' ').copied(), clock, drop);
+        message.letters.extend(added);
+        message.bounds = message.bounds.union(&bounds);
+        message.release(clock, config, drop);
     }
 }
 
@@ -239,7 +336,7 @@ mod tests {
         let text = Text::default();
         let region = CellRect { col: 48, row: 0, cols: 48, rows: 54 };
         let mut headlines = Headlines::new(0.0);
-        let pick = Pick { title: "A fairly long headline that needs two lines here".into(), url: Some("https://x.example".into()), color: 0 };
+        let pick = Pick { title: "A fairly long headline that needs two lines here".into(), url: Some("https://x.example".into()), body: None, color: 0 };
         let drop = |col: i32, _row: i32, after: f32| after + 0.5 + (col % 5) as f32 * 0.3;
         let config = Config { rain: crate::config::Rain { fall_speed: 1.0, ..Default::default() }, ..Default::default() };
         headlines.spawn(0.0, &config, pick, &[region], &index(), &drop);
@@ -256,5 +353,33 @@ mod tests {
         assert!(grid.cells.chunks(4).any(|c| c[1] == KIND_TEXT));
         headlines.update(1000.0);
         assert!(headlines.messages.is_empty());
+    }
+
+    #[test]
+    fn wrap_breaks_at_spaces_and_marks_the_cut() {
+        let chars: Vec<char> = "one two three four five six".chars().collect();
+        let lines: Vec<String> = wrap(&chars, 9, 2).iter().map(|l| l.iter().collect()).collect();
+        assert_eq!(lines, vec!["one two", "three…"]);
+    }
+
+    #[test]
+    fn click_rains_in_the_paragraph_below_the_headline() {
+        let config = Config { rain: crate::config::Rain { fall_speed: 1.0, ..Default::default() }, ..Default::default() };
+        let region = CellRect { col: 0, row: 0, cols: 96, rows: 54 };
+        let mut headlines = Headlines::new(0.0);
+        let drop = |col: i32, _row: i32, after: f32| after + 0.5 + (col % 5) as f32 * 0.3;
+        let body = "The first paragraph of the article, long enough to wrap over a few lines of the rain.";
+        let pick = Pick { title: "Short".into(), url: None, body: Some(body.into()), color: 0 };
+        headlines.spawn(0.0, &config, pick, &[region], &index(), &drop);
+        let (title, end) = (headlines.messages[0].bounds, headlines.messages[0].end);
+        headlines.expand(title.col, title.row, 1.0, &config, &index(), &drop);
+        let message = &headlines.messages[0];
+        assert!(message.bounds.rows > title.rows + 1);
+        assert!(message.end > end);
+        let mut grid = Grid::new(96, 54);
+        headlines.paint(4.0, &config.text, &mut grid);
+        let below = if message.bounds.row == title.row { title.row + title.rows + 1 } else { message.bounds.row };
+        let at = (below * 96 * 4) as usize;
+        assert!(grid.cells[at..at + 96 * 4].chunks(4).any(|c| c[1] == KIND_TEXT));
     }
 }

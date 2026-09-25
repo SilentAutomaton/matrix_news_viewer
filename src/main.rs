@@ -256,8 +256,9 @@ fn main() {
             }
         }
         let cell = settings.config.rain.cell();
-        for (x, y) in desktop.clicks.drain(..) {
-            stage.click(((x - world.x as f64) / cell.0 as f64) as i32, ((y - world.y as f64) / cell.1 as f64) as i32);
+        for (x, y, time) in desktop.clicks.drain(..) {
+            let (col, row) = (((x - world.x as f64) / cell.0 as f64) as i32, ((y - world.y as f64) / cell.1 as f64) as i32);
+            stage.click(col, row, time, rain_clock, &settings.config);
         }
         if now < next_frame {
             continue;

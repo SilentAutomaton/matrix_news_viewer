@@ -13,6 +13,7 @@ use crate::palette::parse_hex;
 use crate::rain;
 
 const REQUERY: Duration = Duration::from_secs(600);
+const DOUBLE_CLICK_MS: u32 = 400;
 
 pub struct Stage {
     pub grid: Grid,
@@ -27,6 +28,7 @@ pub struct Stage {
     reported: bool,
     last_clock: f32,
     intro_end: f32,
+    last_click: Option<(u32, i32, i32)>,
 }
 
 fn unix_now() -> f64 {
@@ -54,6 +56,7 @@ impl Stage {
             reported: false,
             last_clock: 0.0,
             intro_end: 0.0,
+            last_click: None,
         }
     }
 
@@ -142,7 +145,23 @@ impl Stage {
         self.headlines.paint(clock, text, &mut self.grid);
     }
 
-    pub fn click(&self, col: i32, row: i32) {
+    // `time` is the compositor's millisecond timestamp of the press.
+    pub fn click(&mut self, col: i32, row: i32, time: u32, clock: f32, config: &Config) {
+        let double = self.last_click.is_some_and(|(before, c, r)| {
+            time.wrapping_sub(before) <= DOUBLE_CLICK_MS && self.headlines.same_message((c, r), (col, row))
+        });
+        if double {
+            self.last_click = None;
+            self.open(col, row);
+        } else {
+            self.last_click = Some((time, col, row));
+            let (columns, rows) = (&self.columns, self.grid.rows);
+            let drop = |col: i32, row: i32, after: f32| rain::next_drop(&columns[col as usize], row, rows, after, &config.rain);
+            self.headlines.expand(col, row, clock, config, &self.index, &drop);
+        }
+    }
+
+    fn open(&self, col: i32, row: i32) {
         let Some(url) = self.headlines.link_at(col, row) else { return };
         if !(url.starts_with("https://") || url.starts_with("http://")) {
             return;

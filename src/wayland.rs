@@ -51,7 +51,7 @@ pub struct Desktop {
     allowed_outputs: Vec<String>,
     pub panels: Vec<Panel>,
     pub removed: Vec<Panel>,
-    pub clicks: Vec<(f64, f64)>,
+    pub clicks: Vec<(f64, f64, u32)>,
     pub layout_changed: bool,
 }
 
@@ -222,10 +222,10 @@ impl PointerHandler for Desktop {
                         let _ = pointer.set_cursor(conn, CursorIcon::Default);
                     }
                 }
-                PointerEventKind::Press { button: BUTTON_LEFT, .. } => {
+                PointerEventKind::Press { button: BUTTON_LEFT, time, .. } => {
                     if let Some(panel) = self.panel_of(&event.surface) {
-                        let point = (panel.rect.x as f64 + event.position.0, panel.rect.y as f64 + event.position.1);
-                        self.clicks.push(point);
+                        let (x, y) = (panel.rect.x as f64 + event.position.0, panel.rect.y as f64 + event.position.1);
+                        self.clicks.push((x, y, time));
                     }
                 }
                 _ => {}

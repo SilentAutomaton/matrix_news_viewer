@@ -40,6 +40,13 @@ impl CellRect {
     pub fn contains(&self, col: i32, row: i32) -> bool {
         col >= self.col && col < self.col + self.cols && row >= self.row && row < self.row + self.rows
     }
+
+    pub fn union(&self, other: &CellRect) -> Self {
+        let (col, row) = (self.col.min(other.col), self.row.min(other.row));
+        let right = (self.col + self.cols).max(other.col + other.cols);
+        let bottom = (self.row + self.rows).max(other.row + other.rows);
+        Self { col, row, cols: right - col, rows: bottom - row }
+    }
 }
 
 // One RGBA texel per world cell: glyph, kind, colour index, intensity.
@@ -66,6 +73,7 @@ impl Grid {
 pub struct Headline {
     pub title: String,
     pub url: Option<String>,
+    pub body: Option<String>,
     pub source: String,
     pub published: f64,
 }
@@ -73,6 +81,7 @@ pub struct Headline {
 pub struct Pick {
     pub title: String,
     pub url: Option<String>,
+    pub body: Option<String>,
     pub color: u8,
 }
 
