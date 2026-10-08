@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Records the README animations on a headless sway with fake news from news.sql.
-# Needs: sway, wf-recorder, grim, ffmpeg, python-pywayland, python-pillow, python-numpy.
-# Usage: demo/record.py [colors|click|monitors ...]
+# Needs: sway, foot, wtype, wf-recorder, grim, ffmpeg, python-pywayland, python-pillow, python-numpy.
+# Usage: demo/record.py [colors|click|monitors|terminal ...]
 
+import atexit
 import colorsys
 import os
 import signal
@@ -98,7 +99,8 @@ class Desktop:
         env = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "DISPLAY", "SWAYSOCK")}
         env |= {"WLR_BACKENDS": "headless", "WLR_RENDERER": "gles2", "WLR_HEADLESS_OUTPUTS": str(len(outputs)),
                 "WLR_RENDER_DRM_DEVICE": str(min(Path("/dev/dri").glob("renderD*")))}
-        self.sway = subprocess.Popen(["sway", "-c", "/dev/null"], env=env, stderr=subprocess.DEVNULL)
+        self.sway = subprocess.Popen(["sway", "-c", "/dev/null"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        atexit.register(self.sway.terminate)
         sockets = set()
         while not any(s.suffix != ".lock" for s in sockets):
             time.sleep(0.2)
@@ -303,7 +305,34 @@ def monitors(work):
     to_webp(videos, desktop.outputs, DEMO / "monitors.webp")
 
 
-SCENES = {"colors": colors, "click": click, "monitors": monitors}
+def terminal(work):
+    desktop = Desktop(work, [(800, 450, 0, 0)], [
+        "All wars are over now", "Bug-free release shipped on Friday", "Кофе признан овощем",
+        "Wi-Fi теперь бесплатный везде",
+    ])
+    desktop.swaymsg('for_window [app_id="demo-term"] "floating enable, border pixel 1, resize set 470 120, move position 24 306"')
+    shell = desktop.env | {"PATH": f"{BINARY.parent}:{os.environ['PATH']}", "PS1": "$ "}
+    subprocess.Popen(["foot", "-c", "/dev/null", "-a", "demo-term", "-o", "font=monospace:size=10",
+                      "-o", "pad=8x6", "-o", "colors-dark.alpha=0.72", "-o", "colors-dark.background=0a0a0a",
+                      "bash", "--norc", "--noprofile"], env=shell, stderr=subprocess.DEVNULL)
+    time.sleep(4)
+    recorders = desktop.record()
+    time.sleep(3)
+    for command, pause in (
+        ("matrix-news-viewer set palette.preset green", 6),
+        ("matrix-news-viewer set rain.density 0.6", 6),
+        ("matrix-news-viewer set palette.preset ice", 6),
+        ("matrix-news-viewer get rain.density", 3),
+        ("matrix-news-viewer set palette.preset theme", 6),
+    ):
+        subprocess.run(["wtype", "-s", "400", "-d", "45", command, "-s", "400", "-k", "Return"], env=desktop.env, check=True)
+        time.sleep(pause)
+    videos = desktop.stop(recorders)
+    desktop.close()
+    to_webp(videos, desktop.outputs, DEMO / "terminal.webp")
+
+
+SCENES = {"colors": colors, "click": click, "monitors": monitors, "terminal": terminal}
 
 for scene in sys.argv[1:] or SCENES:
     with tempfile.TemporaryDirectory(prefix="mnv-demo-") as work:

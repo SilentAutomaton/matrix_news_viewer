@@ -25,6 +25,10 @@ Two monitors of different sizes show one scene; density and speed change live:
 
 ![Rain across two monitors](demo/monitors.webp)
 
+Palette and rain settings can be changed from a terminal while the wallpaper runs:
+
+![Commands recolour the rain behind a terminal](demo/terminal.webp)
+
 The news here are fake. `demo/record.py` records these clips on a headless sway from `demo/news.sql`.
 
 ## Install
