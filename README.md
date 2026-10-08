@@ -2,6 +2,8 @@
 
 # matrix-news-viewer
 
+![Matrix rain with headlines, fading through the colour presets](demo/colors.webp)
+
 A live wallpaper for Wayland compositors with the layer-shell protocol
 (Hyprland, Sway, river, niri). Vertical Matrix rain covers all monitors as one
 scene. Headlines from a newsboat cache appear inside the rain; a click on a
@@ -12,6 +14,18 @@ this is a separate program, not a fork.
 
 The program never goes to the network. News arrive only when you run
 `newsboat -x reload`.
+
+## Demo
+
+A click on a headline rains in the first paragraph of the item:
+
+![Two clicks on headlines](demo/click.webp)
+
+Two monitors of different sizes show one scene; density and speed change live:
+
+![Rain across two monitors](demo/monitors.webp)
+
+The news here are fake. `demo/record.py` records these clips on a headless sway from `demo/news.sql`.
 
 ## Install
 
