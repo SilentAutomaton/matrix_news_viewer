@@ -22,7 +22,7 @@ cargo test && cargo clippy -- -D warnings
 
 ## Code
 
-`~/.config/claude/templates/agents/codestyle.md`, the same standard at every
+[`codestyle.md`](codestyle.md), the same standard at every
 tier. This project has more than one module, so the modularity rules apply.
 
 ## Rules

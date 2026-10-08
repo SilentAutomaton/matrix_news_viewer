@@ -1,10 +1,14 @@
+[Русская версия](README.ru.md)
+
 # matrix-news-viewer
 
 A live wallpaper for Wayland compositors with the layer-shell protocol
 (Hyprland, Sway, river, niri). Vertical Matrix rain covers all monitors as one
 scene. Headlines from a newsboat cache appear inside the rain; a click on a
 headline rains in the first paragraph of the item, a double click opens its
-link.
+link. The idea comes from
+[HelpFreedom/matrix-rain-saver](https://github.com/HelpFreedom/matrix-rain-saver);
+this is a separate program, not a fork.
 
 The program never goes to the network. News arrive only when you run
 `newsboat -x reload`.
@@ -44,3 +48,7 @@ MIT, see `assets/LICENSE-matrix`. The multi-monitor world crop and the headline
 animation follow the design of
 [HelpFreedom/matrix-rain-saver](https://github.com/HelpFreedom/matrix-rain-saver),
 reimplemented from its description.
+
+## License
+
+GPL-3.0. The files taken from Rezmason/matrix keep their MIT license.
