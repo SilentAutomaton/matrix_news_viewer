@@ -57,7 +57,7 @@ interval_max = 10.0
 dwell = 4.0
 max_concurrent = 2
 brightness = 1.0
-# Shown while the news database is empty or missing.
+# Shown only while there are no news to show: an empty database, or one that was never readable.
 fallback = ["WAKE UP", "FOLLOW THE WHITE RABBIT", "THERE IS NO SPOON"]
 
 [feed]
@@ -72,6 +72,7 @@ content = "content"
 time = "pubDate"
 # unix (seconds) or iso (text dates).
 time_kind = "unix"
+# Headlines from this many hours are shown. After a longer pause without reloads the window ends at the newest item.
 window_hours = 48.0
 # Older headlines are picked less often: weight halves every this many hours.
 half_life_hours = 12.0

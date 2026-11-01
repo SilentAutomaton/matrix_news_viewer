@@ -30,8 +30,12 @@ pub fn read(path: &Path, feed: &Feed, now: f64) -> Result<Vec<Headline>, String>
     );
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let db = Connection::open_with_flags(path, flags).map_err(|e| e.to_string())?;
+    let newest_sql = format!("SELECT max({seconds}) FROM {table} WHERE {title} IS NOT NULL");
+    let newest: Option<f64> = db.query_row(&newest_sql, [], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let window = feed.window_hours * 3600.0;
+    // After a pause without reloads the window ends at the newest item, so the news stay on screen.
+    let since = newest.filter(|n| *n < now - window).unwrap_or(now) - window;
     let mut statement = db.prepare(&sql).map_err(|e| e.to_string())?;
-    let since = now - feed.window_hours * 3600.0;
     let rows = statement
         .query_map([since], |row| {
             Ok(Headline {
@@ -189,6 +193,19 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Fresh");
         assert_eq!(items[0].url.as_deref(), Some("https://Fresh.example"));
+    }
+
+    #[test]
+    fn window_ends_at_the_newest_item_after_a_pause() {
+        let dir = std::env::temp_dir().join(format!("mnv-pause-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cache.db");
+        let now = 1_800_000_000.0;
+        newsboat_db(&path, now);
+        let items = read(&path, &Feed::default(), now + 3600.0 * 1000.0).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Fresh");
     }
 
     #[test]
