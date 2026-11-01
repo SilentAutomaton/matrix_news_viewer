@@ -25,7 +25,7 @@ pub fn bad_font(font: &str, reason: &str) -> String {
 }
 
 pub fn no_news(path: &Path, reason: &str) -> String {
-    format!("Cannot read news from {}: {reason}. Run `newsboat -x reload` or fix [feed] in the config. Fallback phrases are shown.", path.display())
+    format!("Cannot read news from {}: {reason}. Run `newsboat -x reload` or fix [feed] in the config. The news on screen stay; fallback phrases appear only if there are none.", path.display())
 }
 
 pub fn link_failed(url: &str) -> String {

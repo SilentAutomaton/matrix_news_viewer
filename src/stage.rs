@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -65,7 +66,7 @@ impl Stage {
         self.columns = rain::columns(cols, config.rain.density);
         self.headlines = Headlines::new(now);
         self.intro_end = intro_end(config, rows);
-        self.db = crate::config::expand(&config.feed.db);
+        self.follow_feed(config);
         self.queried = None;
     }
 
@@ -102,10 +103,10 @@ impl Stage {
             }
             Err(reason) => {
                 if !self.reported {
-                    eprintln!("{}", notices::no_news(&self.db, &reason));
+                    // eprintln! panics once the process that reads stderr is gone.
+                    let _ = writeln!(std::io::stderr(), "{}", notices::no_news(&self.db, &reason));
                     self.reported = true;
                 }
-                self.news.clear();
             }
         }
     }
@@ -118,6 +119,7 @@ impl Stage {
         let db = crate::config::expand(&config.feed.db);
         if db != self.db {
             self.db = db;
+            self.news.clear();
             self.queried = None;
         }
     }
@@ -180,4 +182,43 @@ pub fn text_colors(config: &Config, default: Rgb) -> Vec<Rgb> {
     std::iter::once(default)
         .chain(sources.map(|s| s.color.as_deref().and_then(parse_hex).unwrap_or(default)))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stage_with_news(name: &str) -> (Stage, Config, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("mnv-stage-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cache.db");
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch("CREATE TABLE rss_item (title TEXT, url TEXT, feedurl TEXT, pubDate INTEGER, content TEXT);").unwrap();
+        db.execute("INSERT INTO rss_item (title, pubDate) VALUES ('Fresh', ?1)", [unix_now() as i64]).unwrap();
+        let mut config = Config::default();
+        config.feed.db = path.to_str().unwrap().into();
+        let mut stage = Stage::new(&config);
+        stage.poll(&config);
+        assert_eq!(stage.news.len(), 1);
+        (stage, config, dir)
+    }
+
+    #[test]
+    fn failed_read_keeps_the_news() {
+        let (mut stage, config, dir) = stage_with_news("failed");
+        std::fs::remove_dir_all(&dir).unwrap();
+        stage.poll(&config);
+        assert!(stage.reported);
+        assert_eq!(stage.news.len(), 1);
+    }
+
+    #[test]
+    fn new_database_drops_the_news_of_the_old_one() {
+        let (mut stage, mut config, dir) = stage_with_news("moved");
+        config.feed.db = dir.join("missing.db").to_str().unwrap().into();
+        stage.follow_feed(&config);
+        stage.poll(&config);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(stage.news.is_empty());
+    }
 }
